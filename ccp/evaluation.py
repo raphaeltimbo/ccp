@@ -13,6 +13,17 @@ from . import Q_
 from sklearn.cluster import KMeans
 from tqdm.auto import tqdm
 
+def calculate_flow():
+    pass
+
+def create_clusters():
+    pass
+
+def convert_curves():
+    pass
+
+def calculate_points():
+    pass
 
 class Evaluation:
     """Class for performance evaluation based on historical data."""
