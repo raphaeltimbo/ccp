@@ -1,4 +1,5 @@
 """Flow orifice."""
+
 import numpy as np
 from scipy.optimize import newton
 from ccp.config.units import check_units
@@ -17,6 +18,7 @@ class FlowOrifice:
         flow_v=None,
         flow_m=None,
         qm=None,
+        state_upstream=True,
     ):
         """Flow orifice.
 
@@ -35,6 +37,10 @@ class FlowOrifice:
             Default is "flange".
         qm : float, Quantity, optional
             Mass flow rate (kg/s).
+        state_upstream : bool, optional
+            If the state given is upstream the flow orifice the value is True.
+            If it is downstream, the value should be false.
+            Default is True.
 
         Examples
         --------
@@ -56,6 +62,10 @@ class FlowOrifice:
         self.D = D
         self.d = d
         self.tappings = tappings
+
+        # always consider the state upstream for the rest of calculation
+        if not state_upstream:
+            self.state.update(p=state.p() + delta_p, T=state.T())
 
         if tappings == "corner" or tappings == "D D/2" or tappings == "flange":
             pass
