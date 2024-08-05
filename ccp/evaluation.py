@@ -321,24 +321,28 @@ class Evaluation:
                 df.loc[i, "flow_v"] = (fo.qm * state.v()).m
 
         # check if flow_v or flow_m is in the DataFrame
+        print("1")
         if not calculate_flow:
-            if "flow_v" in df.columns:
+            if "flow_m" not in df.columns:
                 # create flow_m column
                 df["flow_m"] = (
                     Q_(df["flow_v"].array, self.data_units["flow_v"])
                     / Q_(df["v_s"].array, "m³/kg")
                 ).m
-            elif "flow_m" in df.columns:
+            elif "flow_v" not in df.columns:
                 # create flow_v column
                 df["flow_v"] = (
                     Q_(df["flow_m"].array, self.data_units["flow_m"])
                     * Q_(df["v_s"].array, "m³/kg")
                 ).m
             else:
-                raise ValueError("Flow rate not found in the DataFrame.")
+                # check if flow_v or flow_m is in the DataFrame
+                if not ("flow_v" in df.columns or "flow_m" in df.columns):
+                    raise ValueError("Flow rate not found in the DataFrame.")
 
         # assign to a cluster
         df["cluster"] = 0
+        print("2")
 
         for i, row in df.iterrows():
             new_data = row[["speed_sound", "ps", "Ts"]].array
