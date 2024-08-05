@@ -47,6 +47,8 @@ class Evaluation:
             SI units:
             - Flow: should be 'flow_v' (m³/s) or 'flow_m' (kg/s) in the DataFrame;
             - Delta p: should be 'delta_p' (Pa) in the DataFrame;
+            - Pressure up or downstream the flow orifice:
+              should be 'p_upstream' or 'p_downstream' (Pa) in the DataFrame;
             - Suction pressure: should be 'ps' (Pa) in the DataFrame;
             - Discharge pressure: should be 'pd' (Pa) in the DataFrame;
             - Suction temperature: should be 'Ts' (degK) in the DataFrame;
@@ -157,8 +159,27 @@ class Evaluation:
             # check if flow_v or flow_m are in df columns, otherwise calculate flow
 
             if calculate_flow:
+                if "p_downstream" in df.columns:
+                    state_upstream = False
+                    state.update(
+                        p=Q_(row.p_downstream, self.data_units["p_downstream"]),
+                        T=Q_(row.Ts, self.data_units["Ts"]),
+                    )
+                else:
+                    state_upstream = True
+                    state.update(
+                        p=Q_(row.p_upstream, self.data_units["p_upstream"]),
+                        T=Q_(row.Ts, self.data_units["Ts"]),
+                    )
                 delta_p = Q_(row.delta_p, self.data_units["delta_p"])
-                fo = FlowOrifice(state, delta_p, self.D, self.d, tappings=self.tappings)
+                fo = FlowOrifice(
+                    state,
+                    delta_p,
+                    self.D,
+                    self.d,
+                    tappings=self.tappings,
+                    state_upstream=state_upstream,
+                )
                 df.loc[i, "flow_m"] = fo.qm.m
                 df.loc[i, "flow_v"] = (fo.qm * state.v()).m
 
@@ -275,8 +296,27 @@ class Evaluation:
             # check if flow_v or flow_m are in df columns, otherwise calculate flow
 
             if calculate_flow:
+                if "p_downstream" in df.columns:
+                    state_upstream = False
+                    state.update(
+                        p=Q_(row.p_downstream, self.data_units["p_downstream"]),
+                        T=Q_(row.Ts, self.data_units["Ts"]),
+                    )
+                else:
+                    state_upstream = True
+                    state.update(
+                        p=Q_(row.p_upstream, self.data_units["p_upstream"]),
+                        T=Q_(row.Ts, self.data_units["Ts"]),
+                    )
                 delta_p = Q_(row.delta_p, self.data_units["delta_p"])
-                fo = FlowOrifice(state, delta_p, self.D, self.d, tappings=self.tappings)
+                fo = FlowOrifice(
+                    state,
+                    delta_p,
+                    self.D,
+                    self.d,
+                    tappings=self.tappings,
+                    state_upstream=state_upstream,
+                )
                 df.loc[i, "flow_m"] = fo.qm.m
                 df.loc[i, "flow_v"] = (fo.qm * state.v()).m
 

@@ -194,6 +194,7 @@ def test_evaluation_delta_p():
             "Td": "degC",
             "delta_p": "mmH2O",
             "speed": "RPM",
+            "p_downstream": "bar",
         },
         impellers=[imp_a],
         D = Q_(0.590550, "m"),
