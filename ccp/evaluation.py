@@ -250,6 +250,10 @@ class Evaluation:
             else:
                 raise ValueError("Flow rate not found in the DataFrame.")
 
+        # add flow_v_normal to results
+        state_normal = State(p=Q_(1, "bar"), T=Q_(20, "degC"))
+        df["flow_v_normal"] = df["flow_m"] * state_normal.v()
+
         return df
 
     def calculate_points(self, data=None, drop_invalid_values=True):
