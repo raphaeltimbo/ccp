@@ -17,6 +17,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "CCP - Centrifugal Compressor Performance",
   description: "Centrifugal compressor performance calculation tool",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/ccp.png",
+  },
 };
 
 export default function RootLayout({

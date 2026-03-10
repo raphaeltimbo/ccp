@@ -14,12 +14,16 @@ export function Sidebar() {
   return (
     <nav className="w-56 shrink-0 border-r border-slate-200 bg-white flex flex-col">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-slate-100">
-        <div className="text-xl font-bold tracking-tight text-primary-800">
-          CCP
-        </div>
-        <div className="text-[10px] font-medium uppercase tracking-widest text-slate-400 mt-0.5">
-          Compressor Performance
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/ccp.png" alt="CCP" className="h-12 w-auto" />
+        <div>
+          <div className="text-xl font-bold tracking-tight text-primary-800">
+            CCP
+          </div>
+          <div className="text-[10px] font-medium uppercase tracking-widest text-slate-400 mt-0.5 leading-tight">
+            Centrifugal Compressor Performance
+          </div>
         </div>
       </div>
 
