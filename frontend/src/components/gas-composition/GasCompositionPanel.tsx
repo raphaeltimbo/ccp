@@ -26,13 +26,7 @@ function createDefaultGasColumn(index: number): GasColumn {
 
 export function GasCompositionPanel() {
   const { data: fluidList, isLoading } = useFluids();
-  const {
-    setGasCompositions,
-    guaranteeGasName,
-    setGuaranteeGasName,
-    testGasName,
-    setTestGasName,
-  } = useStraightThroughStore();
+  const { setGasCompositions } = useStraightThroughStore();
 
   const [gases, setGases] = useState<GasColumn[]>(() =>
     Array.from({ length: MAX_GASES }, (_, i) => createDefaultGasColumn(i)),
@@ -96,55 +90,13 @@ export function GasCompositionPanel() {
     updateGas(gasIndex, (g) => ({ ...g, name }));
   }
 
-  const gasNames = gases.map((g) => g.name);
-
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="text-base font-semibold text-slate-800">
-          Gas Composition
-        </h2>
-      </div>
+    <details className="rounded-xl border border-slate-200 bg-white shadow-sm group">
+      <summary className="cursor-pointer select-none px-5 py-4 text-base font-semibold text-slate-800 hover:bg-slate-50 rounded-xl transition-colors">
+        Gas Selection
+      </summary>
 
-      <div className="p-5">
-        {/* Gas selectors */}
-        <div className="mb-5 flex gap-6">
-          <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500">
-              Guarantee Gas
-            </label>
-            <select
-              value={guaranteeGasName}
-              onChange={(e) => setGuaranteeGasName(e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              <option value="">Select...</option>
-              {gasNames.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500">
-              Test Gas
-            </label>
-            <select
-              value={testGasName}
-              onChange={(e) => setTestGasName(e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              <option value="">Select...</option>
-              {gasNames.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
+      <div className="border-t border-slate-100 p-5">
         {/* Gas columns grid */}
         <div className="overflow-x-auto -mx-5 px-5 pb-2">
           <div className="inline-flex gap-3">
@@ -272,6 +224,6 @@ export function GasCompositionPanel() {
           </div>
         </div>
       </div>
-    </section>
+    </details>
   );
 }

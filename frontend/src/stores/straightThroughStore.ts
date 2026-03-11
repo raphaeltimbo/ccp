@@ -23,9 +23,15 @@ function createDefaultDataSheet(): DataSheetInputs {
     suctionTemperature: qty(0, "degC"),
     dischargePressure: qty(0, "bar"),
     dischargeTemperature: qty(0, "degC"),
+    gasPower: qty(0, "kW"),
+    shaftPower: qty(0, "kW"),
     speed: qty(0, "rpm"),
+    head: qty(0, "kJ/kg"),
+    efficiency: qty(0, ""),
     b: qty(0, "mm"),
     D: qty(0, "mm"),
+    surfaceRoughness: qty(0, "mm"),
+    casingArea: qty(0, "m**2"),
     power: qty(0, "kW"),
   };
 }
@@ -115,6 +121,7 @@ interface StraightThroughState {
     field: keyof FlowOrificeInputs,
     value: QuantityInput | string,
   ) => void;
+  updateTestPointGas: (index: number, gasName: string) => void;
   updateOptions: (opts: Partial<CalculationOptions>) => void;
   setResults: (results: CalculationResponse | null) => void;
   setIsCalculating: (v: boolean) => void;
@@ -136,9 +143,15 @@ export const useStraightThroughStore = create<StraightThroughState>(
       createDefaultFlowOrifice(),
     ),
     options: {
-      reynoldsCorrection: false,
-      bearingMechanicalLosses: false,
-      polytropicMethod: "schultz",
+      reynoldsCorrection: true,
+      casingHeatLoss: true,
+      bearingMechanicalLosses: true,
+      calculateLeakages: true,
+      sealGasFlow: true,
+      variableSpeed: true,
+      showPoints: true,
+      ambientPressure: qty(1.01325, "bar"),
+      polytropicMethod: "sandberg_colby",
       useFlowOrifice: false,
     },
     results: null,
@@ -185,6 +198,13 @@ export const useStraightThroughStore = create<StraightThroughState>(
       set((state) => ({
         oilInputs: { ...state.oilInputs, ...inputs },
       })),
+
+    updateTestPointGas: (index, gasName) =>
+      set((state) => {
+        const testPoints = [...state.testPoints];
+        testPoints[index] = { ...testPoints[index], gasSelection: gasName };
+        return { testPoints };
+      }),
 
     updateFlowOrifice: (index, field, value) =>
       set((state) => {

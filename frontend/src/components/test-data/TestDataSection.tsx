@@ -62,8 +62,16 @@ const ROWS: RowConfig[] = [
 ];
 
 export function TestDataSection() {
-  const { testPoints, numTestPoints, setNumTestPoints, updateTestPoint } =
-    useStraightThroughStore();
+  const {
+    testPoints,
+    numTestPoints,
+    setNumTestPoints,
+    updateTestPoint,
+    updateTestPointGas,
+    gasCompositions,
+  } = useStraightThroughStore();
+
+  const gasNames = gasCompositions.map((g) => g.name);
 
   function getRowUnit(rowKey: keyof TestPointInputs): string {
     const val = testPoints[0]?.[rowKey] as QuantityInput | undefined;
@@ -94,29 +102,27 @@ export function TestDataSection() {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-        <div>
-          <h2 className="text-base font-semibold text-slate-800">Test Data</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Test point measurements</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-slate-500">Points:</label>
-          <select
-            value={numTestPoints}
-            onChange={(e) => setNumTestPoints(parseInt(e.target.value))}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700"
-          >
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </div>
+    <details className="rounded-xl border border-slate-200 bg-white shadow-sm group">
+      <summary className="cursor-pointer select-none px-5 py-4 text-base font-semibold text-slate-800 hover:bg-slate-50 rounded-xl transition-colors">
+        Test Data
+      </summary>
+
+      <div className="border-t border-slate-100 px-5 py-3 flex items-center gap-2">
+        <label className="text-xs font-medium text-slate-500">Points:</label>
+        <select
+          value={numTestPoints}
+          onChange={(e) => setNumTestPoints(parseInt(e.target.value))}
+          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700"
+        >
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <div className="overflow-x-auto p-5">
+      <div className="overflow-x-auto p-5 pt-0">
         <table className="w-full text-sm">
           <thead>
             <tr>
@@ -137,6 +143,36 @@ export function TestDataSection() {
             </tr>
           </thead>
           <tbody>
+            {/* Gas Selection row */}
+            <tr className="bg-white">
+              <td className="py-2 pr-3 text-sm font-medium text-slate-600 whitespace-nowrap">
+                Gas Selection
+              </td>
+              <td className="py-2 pr-3" />
+              {Array.from({ length: numTestPoints }, (_, pi) => {
+                const selectedGas = testPoints[pi]?.gasSelection ?? "";
+                return (
+                  <td key={pi} className="py-2 pr-3">
+                    <select
+                      value={selectedGas}
+                      onChange={(e) =>
+                        updateTestPointGas(pi, e.target.value)
+                      }
+                      className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700"
+                    >
+                      <option value="">--</option>
+                      {gasNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                );
+              })}
+            </tr>
+
+            {/* Quantity rows */}
             {ROWS.map((row, rowIdx) => {
               const unitValue = getRowUnit(row.key) || row.unitOptions[0];
               const isOptional = row.optional;
@@ -145,7 +181,7 @@ export function TestDataSection() {
                 <tr
                   key={row.key}
                   className={
-                    rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                    (rowIdx + 1) % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                   }
                 >
                   <td className="py-2 pr-3 text-sm font-medium text-slate-600 whitespace-nowrap">
@@ -199,6 +235,6 @@ export function TestDataSection() {
           </tbody>
         </table>
       </div>
-    </section>
+    </details>
   );
 }

@@ -86,18 +86,13 @@ export function FlowOrificeSection() {
   ];
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="text-base font-semibold text-slate-800">
-          Flow Orifice
-        </h2>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Orifice flow measurement parameters
-        </p>
-      </div>
+    <details className="rounded-xl border border-slate-200 bg-white shadow-sm group">
+      <summary className="cursor-pointer select-none px-5 py-4 text-base font-semibold text-slate-800 hover:bg-slate-50 rounded-xl transition-colors">
+        Flowrate Calculation
+      </summary>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-100 px-5">
+      <div className="flex border-t border-slate-100 px-5">
         {Array.from({ length: numTestPoints }, (_, i) => (
           <button
             key={i}
@@ -171,6 +166,6 @@ export function FlowOrificeSection() {
           </select>
         </div>
       </div>
-    </section>
+    </details>
   );
 }

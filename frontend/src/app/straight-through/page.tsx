@@ -14,7 +14,7 @@ export default function StraightThroughPage() {
   const store = useStraightThroughStore();
   const calculation = useCalculation();
 
-  function handleCalculate() {
+  function buildRequest(): CalculationRequest {
     const request: CalculationRequest = {
       gasCompositions: store.gasCompositions,
       guaranteeGas: store.guaranteeGasName,
@@ -35,21 +35,52 @@ export default function StraightThroughPage() {
       );
     }
 
-    calculation.mutate(request);
+    return request;
   }
+
+  function handleCalculate() {
+    calculation.mutate(buildRequest());
+  }
+
+  function handleCalculateSpeed() {
+    calculation.mutate({ ...buildRequest(), calculationType: "speed" });
+  }
+
+  function handleCalculateFlowrate() {
+    calculation.mutate({ ...buildRequest(), calculationType: "flowrate" });
+  }
+
+  const buttonClass =
+    "flex-1 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors";
+
+  const spinner = (
+    <span className="flex items-center justify-center gap-2">
+      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+        <circle
+          className="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+        />
+        <path
+          className="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+        />
+      </svg>
+      Calculating...
+    </span>
+  );
 
   return (
     <div className="flex gap-8">
       {/* Main form content */}
       <div className="flex-1 min-w-0 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Straight-Through Compressor
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Performance test and evaluation
-          </p>
-        </div>
+        <h1 className="text-2xl font-bold text-slate-900">
+          Performance Test Straight-Through Compressor
+        </h1>
 
         <GasCompositionPanel />
         <DataSheetSection />
@@ -57,40 +88,31 @@ export default function StraightThroughPage() {
 
         {store.options.useFlowOrifice && <FlowOrificeSection />}
 
-        {/* Calculate button */}
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleCalculate}
-            disabled={store.isCalculating}
-            className="rounded-lg bg-primary-600 px-8 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-          >
-            {store.isCalculating ? (
-              <span className="flex items-center gap-2">
-                <svg
-                  className="h-4 w-4 animate-spin"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                Calculating...
-              </span>
-            ) : (
-              "Calculate"
-            )}
-          </button>
+        {/* Action buttons */}
+        <div className="space-y-4">
+          <div className="flex gap-4">
+            <button
+              onClick={handleCalculate}
+              disabled={store.isCalculating}
+              className={buttonClass}
+            >
+              {store.isCalculating ? spinner : "Calculate"}
+            </button>
+            <button
+              onClick={handleCalculateSpeed}
+              disabled={store.isCalculating}
+              className={buttonClass}
+            >
+              {store.isCalculating ? spinner : "Calculate Speed"}
+            </button>
+            <button
+              onClick={handleCalculateFlowrate}
+              disabled={store.isCalculating}
+              className={buttonClass}
+            >
+              {store.isCalculating ? spinner : "Calculate Flowrate"}
+            </button>
+          </div>
 
           {calculation.isError && (
             <span className="text-sm text-red-600 bg-red-50 px-3 py-1.5 rounded-md">
