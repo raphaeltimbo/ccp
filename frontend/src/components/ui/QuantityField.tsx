@@ -18,35 +18,35 @@ export function QuantityField({
   disabled = false,
 }: QuantityFieldProps) {
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-      <label className="text-sm font-medium text-slate-600">{label}</label>
-      <div className="flex items-center gap-1.5">
-        <input
-          type="number"
-          value={value.magnitude || ""}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              magnitude: parseFloat(e.target.value) || 0,
-            })
-          }
-          disabled={disabled}
-          className="w-32 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400"
-          placeholder="0"
-        />
-        <select
-          value={value.unit}
-          onChange={(e) => onChange({ ...value, unit: e.target.value })}
-          disabled={disabled}
-          className="rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-600 disabled:bg-slate-50 disabled:text-slate-400"
-        >
-          {unitOptions.map((u) => (
-            <option key={u} value={u}>
-              {u}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div className="flex items-center gap-3 py-1">
+      <label className="w-52 shrink-0 text-[13px] text-slate-500">
+        {label}
+      </label>
+      <select
+        value={value.unit}
+        onChange={(e) => onChange({ ...value, unit: e.target.value })}
+        disabled={disabled}
+        className="w-24 shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[13px] text-slate-600 disabled:opacity-50"
+      >
+        {unitOptions.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+      </select>
+      <input
+        type="number"
+        value={value.magnitude || ""}
+        onChange={(e) =>
+          onChange({
+            ...value,
+            magnitude: parseFloat(e.target.value) || 0,
+          })
+        }
+        disabled={disabled}
+        className="flex-1 rounded border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-700 placeholder:text-slate-300 disabled:opacity-50"
+        placeholder=""
+      />
     </div>
   );
 }

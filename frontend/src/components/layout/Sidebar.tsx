@@ -12,16 +12,16 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <nav className="w-56 shrink-0 border-r border-slate-200 bg-white flex flex-col">
+    <nav className="w-52 shrink-0 border-r border-slate-200 bg-white flex flex-col">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-100">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/ccp.png" alt="CCP" className="h-12 w-auto" />
+        <img src="/ccp.png" alt="CCP" className="h-11 w-auto" />
         <div>
-          <div className="text-xl font-bold tracking-tight text-primary-800">
+          <div className="text-lg font-bold tracking-tight text-primary-800">
             CCP
           </div>
-          <div className="text-[10px] font-medium uppercase tracking-widest text-slate-400 mt-0.5 leading-tight">
+          <div className="text-[9px] font-medium uppercase tracking-widest text-slate-400 mt-0.5 leading-tight">
             Centrifugal Compressor Performance
           </div>
         </div>
@@ -29,24 +29,24 @@ export function Sidebar() {
 
       {/* Navigation */}
       <div className="flex-1 px-3 py-4">
-        <ul className="space-y-1">
+        <ul className="space-y-0.5">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href;
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-colors ${
                     isActive
                       ? "bg-primary-50 text-primary-700"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
                   }`}
                 >
                   <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold ${
+                    className={`flex h-6 w-6 items-center justify-center rounded text-[11px] font-bold ${
                       isActive
                         ? "bg-primary-600 text-white"
-                        : "bg-slate-100 text-slate-500"
+                        : "bg-slate-100 text-slate-400"
                     }`}
                   >
                     {item.icon}

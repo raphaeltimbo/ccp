@@ -14,31 +14,43 @@ export function DataSheetSection() {
   } = useStraightThroughStore();
 
   return (
-    <details className="rounded-xl border border-slate-200 bg-white shadow-sm group">
-      <summary className="cursor-pointer select-none px-5 py-4 text-base font-semibold text-slate-800 hover:bg-slate-50 rounded-xl transition-colors">
+    <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <summary className="cursor-pointer select-none px-5 py-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
         Data Sheet
       </summary>
 
-      <div className="border-t border-slate-100 p-5 space-y-3">
+      <div className="border-t border-slate-100 px-5 py-4">
+        {/* Column headers */}
+        <div className="flex items-center gap-3 pb-2 mb-1 border-b border-slate-100">
+          <span className="w-52 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Parameter
+          </span>
+          <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Units
+          </span>
+          <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Value
+          </span>
+        </div>
+
         {/* Gas Selection */}
-        <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-          <label className="text-sm font-medium text-slate-600">
+        <div className="flex items-center gap-3 py-1">
+          <label className="w-52 shrink-0 text-[13px] text-slate-500">
             Gas Selection
           </label>
-          <div className="flex items-center gap-1.5">
-            <select
-              value={guaranteeGasName}
-              onChange={(e) => setGuaranteeGasName(e.target.value)}
-              className="w-32 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600"
-            >
-              <option value="">Select gas...</option>
-              {gasCompositions.map((gc) => (
-                <option key={gc.name} value={gc.name}>
-                  {gc.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="w-24 shrink-0" />
+          <select
+            value={guaranteeGasName}
+            onChange={(e) => setGuaranteeGasName(e.target.value)}
+            className="flex-1 rounded border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-700"
+          >
+            <option value="">Select gas...</option>
+            {gasCompositions.map((gc) => (
+              <option key={gc.name} value={gc.name}>
+                {gc.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <QuantityField
@@ -102,13 +114,13 @@ export function DataSheetSection() {
           onChange={(v) => updateDataSheet("efficiency", v)}
         />
         <QuantityField
-          label="First Impeller Width (b)"
+          label="First Impeller Width"
           value={dataSheet.b}
           unitOptions={UNIT_OPTIONS.length}
           onChange={(v) => updateDataSheet("b", v)}
         />
         <QuantityField
-          label="First Impeller Diameter (D)"
+          label="First Impeller Diameter"
           value={dataSheet.D}
           unitOptions={UNIT_OPTIONS.length}
           onChange={(v) => updateDataSheet("D", v)}

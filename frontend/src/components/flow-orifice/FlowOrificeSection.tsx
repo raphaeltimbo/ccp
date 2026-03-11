@@ -86,8 +86,8 @@ export function FlowOrificeSection() {
   ];
 
   return (
-    <details className="rounded-xl border border-slate-200 bg-white shadow-sm group">
-      <summary className="cursor-pointer select-none px-5 py-4 text-base font-semibold text-slate-800 hover:bg-slate-50 rounded-xl transition-colors">
+    <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <summary className="cursor-pointer select-none px-5 py-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
         Flowrate Calculation
       </summary>
 
@@ -97,7 +97,7 @@ export function FlowOrificeSection() {
           <button
             key={i}
             onClick={() => setActiveTab(i)}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`px-4 py-2.5 text-[13px] font-medium transition-colors border-b-2 -mb-px ${
               activeTab === i
                 ? "border-primary-500 text-primary-600"
                 : "border-transparent text-slate-400 hover:text-slate-600"
@@ -109,46 +109,44 @@ export function FlowOrificeSection() {
       </div>
 
       {/* Fields */}
-      <div className="p-5 space-y-3">
+      <div className="p-5 space-y-2">
         {fields.map((f) => {
           const val = fo[f.key] as QuantityInput;
           return (
             <div
               key={f.key}
-              className="grid grid-cols-[1fr_auto] items-center gap-2"
+              className="flex items-center gap-3 py-1"
             >
-              <label className="text-sm font-medium text-slate-600">
+              <label className="w-52 shrink-0 text-[13px] text-slate-500">
                 {f.label}
               </label>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  value={val.magnitude || ""}
-                  onChange={(e) =>
-                    handleQtyChange(f.key, parseFloat(e.target.value) || 0)
-                  }
-                  className="w-32 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-                  placeholder="0"
-                />
-                <select
-                  value={val.unit}
-                  onChange={(e) => handleUnitChange(f.key, e.target.value)}
-                  className="rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-600"
-                >
-                  {f.unitOptions.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select
+                value={val.unit}
+                onChange={(e) => handleUnitChange(f.key, e.target.value)}
+                className="w-24 shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[13px] text-slate-600"
+              >
+                {f.unitOptions.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                value={val.magnitude || ""}
+                onChange={(e) =>
+                  handleQtyChange(f.key, parseFloat(e.target.value) || 0)
+                }
+                className="flex-1 rounded border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-700"
+                placeholder="0"
+              />
             </div>
           );
         })}
 
         {/* Tappings dropdown */}
-        <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-          <label className="text-sm font-medium text-slate-600">
+        <div className="flex items-center gap-3 py-1">
+          <label className="w-52 shrink-0 text-[13px] text-slate-500">
             Tappings
           </label>
           <select
@@ -156,7 +154,7 @@ export function FlowOrificeSection() {
             onChange={(e) =>
               updateFlowOrifice(activeTab, "tappings", e.target.value)
             }
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600"
+            className="w-24 shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[13px] text-slate-600"
           >
             {TAPPING_OPTIONS.map((t) => (
               <option key={t} value={t}>

@@ -51,7 +51,7 @@ export default function StraightThroughPage() {
   }
 
   const buttonClass =
-    "flex-1 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors";
+    "flex-1 rounded-lg bg-slate-800 px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-slate-700 active:bg-slate-900 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors";
 
   const spinner = (
     <span className="flex items-center justify-center gap-2">
@@ -77,8 +77,8 @@ export default function StraightThroughPage() {
   return (
     <div className="flex gap-8">
       {/* Main form content */}
-      <div className="flex-1 min-w-0 space-y-6">
-        <h1 className="text-2xl font-bold text-slate-900">
+      <div className="flex-1 min-w-0 space-y-4">
+        <h1 className="text-xl font-bold text-slate-800">
           Performance Test Straight-Through Compressor
         </h1>
 

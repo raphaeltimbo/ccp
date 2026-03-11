@@ -91,13 +91,12 @@ export function GasCompositionPanel() {
   }
 
   return (
-    <details className="rounded-xl border border-slate-200 bg-white shadow-sm group">
-      <summary className="cursor-pointer select-none px-5 py-4 text-base font-semibold text-slate-800 hover:bg-slate-50 rounded-xl transition-colors">
+    <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <summary className="cursor-pointer select-none px-5 py-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
         Gas Selection
       </summary>
 
       <div className="border-t border-slate-100 p-5">
-        {/* Gas columns grid */}
         <div className="overflow-x-auto -mx-5 px-5 pb-2">
           <div className="inline-flex gap-3">
             {gases.map((gas, gi) => {
@@ -106,25 +105,18 @@ export function GasCompositionPanel() {
                 0,
               );
               const totalOk = Math.abs(total - 1) < 0.001;
-              const hasComponents = gas.rows.some(
-                (r) => r.component && r.molarFraction > 0,
-              );
 
               return (
                 <div
                   key={gi}
-                  className={`w-56 shrink-0 rounded-lg border p-3 ${
-                    hasComponents
-                      ? "border-primary-200 bg-primary-50/30"
-                      : "border-slate-200 bg-slate-50/50"
-                  }`}
+                  className="w-56 shrink-0 rounded-lg border border-slate-200 bg-slate-50/50 p-3"
                 >
                   {/* Gas name */}
                   <input
                     type="text"
                     value={gas.name}
                     onChange={(e) => updateGasName(gi, e.target.value)}
-                    className="mb-3 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700"
+                    className="mb-3 w-full rounded border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] font-semibold text-slate-700"
                   />
 
                   {/* Header */}
@@ -146,7 +138,7 @@ export function GasCompositionPanel() {
                           onChange={(e) =>
                             updateRow(gi, ri, "component", e.target.value)
                           }
-                          className="w-full rounded-md border border-slate-300 bg-white px-1.5 py-1.5 text-xs text-slate-700"
+                          className="w-full rounded border border-slate-200 bg-white px-1.5 py-1.5 text-[12px] text-slate-700"
                         >
                           <option value="">--</option>
                           {isLoading ? (
@@ -173,12 +165,12 @@ export function GasCompositionPanel() {
                               parseFloat(e.target.value) || 0,
                             )
                           }
-                          className="w-full rounded-md border border-slate-300 bg-white px-1.5 py-1.5 text-xs text-right text-slate-700"
+                          className="w-full rounded border border-slate-200 bg-white px-1.5 py-1.5 text-[12px] text-right text-slate-700"
                           placeholder="0.000"
                         />
                         <button
                           onClick={() => removeRow(gi, ri)}
-                          className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500"
+                          className="flex h-5 w-5 items-center justify-center rounded text-slate-300 hover:bg-red-50 hover:text-red-400 transition-colors"
                           title="Remove"
                         >
                           <svg
@@ -201,7 +193,7 @@ export function GasCompositionPanel() {
 
                   {/* Total */}
                   <div
-                    className={`mt-2 flex items-center justify-between border-t pt-2 text-xs font-semibold ${
+                    className={`mt-2 flex items-center justify-between border-t pt-2 text-[12px] font-semibold ${
                       totalOk
                         ? "border-green-200 text-green-600"
                         : "border-red-200 text-red-500"
@@ -214,7 +206,7 @@ export function GasCompositionPanel() {
                   {/* Add row */}
                   <button
                     onClick={() => addRow(gi)}
-                    className="mt-2 w-full rounded-md border border-dashed border-slate-300 py-1.5 text-xs font-medium text-slate-500 hover:border-primary-400 hover:bg-primary-50 hover:text-primary-600 transition-colors"
+                    className="mt-2 w-full rounded border border-dashed border-slate-300 py-1.5 text-[12px] text-slate-400 hover:border-primary-400 hover:bg-primary-50 hover:text-primary-600 transition-colors"
                   >
                     + Add Component
                   </button>
