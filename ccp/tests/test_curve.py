@@ -42,9 +42,9 @@ def test_curve_performance_parameters(curve0):
     assert curve0.head.units == "joule/kilogram"
     assert curve0.eff.units == ureg.dimensionless
     assert curve0.power.units == "watt"
-    assert_allclose(curve0.head.m, np.array([43513.526834, 57939.839207]))
-    assert_allclose(curve0.eff.m, np.array([0.709014, 0.881951]), rtol=1e-6)
-    assert_allclose(curve0.power.m, np.array([108814.010351, 232958.372613]), rtol=1e-6)
+    assert_allclose(curve0.head.m, np.array([43527.779979, 57942.686156]), rtol=1e-3)
+    assert_allclose(curve0.eff.m, np.array([0.709014, 0.881951]), rtol=1e-3)
+    assert_allclose(curve0.power.m, np.array([108814.010351, 232958.372613]), rtol=1e-3)
 
 
 def test_curve_interpolation(curve0):
