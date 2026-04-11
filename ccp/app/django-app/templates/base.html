@@ -12,6 +12,15 @@
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+  <script>
+    function ccpSyncUnit(src) {
+      var key = src.getAttribute("data-sync-unit");
+      if (!key) return;
+      document.querySelectorAll('[data-sync-unit="' + key + '"]').forEach(function (el) {
+        if (el !== src) el.value = src.value;
+      });
+    }
+  </script>
 </head>
 <body>
   <div class="ccp-layout">

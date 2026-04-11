@@ -52,12 +52,7 @@
     <summary>Test Data - First Section</summary>
     <div class="body">
       {{ first_section_formset.management_form }}
-      {% for f in first_section_formset %}
-        <fieldset class="ccp-fieldset">
-          <legend>Point {{ forloop.counter }}</legend>
-          {% form_param_rows f %}
-        </fieldset>
-      {% endfor %}
+      {% formset_param_grid first_section_formset "sec1" %}
     </div>
   </details>
 
@@ -65,12 +60,7 @@
     <summary>Test Data - Second Section</summary>
     <div class="body">
       {{ second_section_formset.management_form }}
-      {% for f in second_section_formset %}
-        <fieldset class="ccp-fieldset">
-          <legend>Point {{ forloop.counter }}</legend>
-          {% form_param_rows f %}
-        </fieldset>
-      {% endfor %}
+      {% formset_param_grid second_section_formset "sec2" %}
     </div>
   </details>
 

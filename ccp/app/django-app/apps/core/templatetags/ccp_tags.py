@@ -61,6 +61,115 @@ def parameter_row(
     }
 
 
+@register.simple_tag
+def formset_param_grid(formset, scope: str = "") -> str:
+    """Render a formset as a parameters × points grid.
+
+    Each form in *formset* becomes a column (``Point 1``..``Point N``) and
+    every ``<base>_value`` field in form 0 whose paired ``<base>_units``
+    also exists becomes a row with a shared units dropdown. Changing the
+    visible select cascades the value into hidden ``_units`` inputs for
+    the remaining forms so formset validation still sees per-form units.
+
+    Parameters
+    ----------
+    formset : django.forms.formsets.BaseFormSet
+        Bound or unbound formset to pivot.
+    scope : str, optional
+        Prefix used by the sync-unit ``data-sync-unit`` attribute so that
+        multiple grids on the same page don't clobber each other's state.
+        Defaults to ``formset.prefix`` when omitted.
+    """
+    from django.utils.html import conditional_escape as esc
+
+    if not formset.forms:
+        return ""
+
+    scope = scope or formset.prefix or ""
+    first = formset.forms[0]
+    fields = {f.name: f for f in first}
+
+    params: list[tuple[str, str, str, object]] = []
+    for name, bound in fields.items():
+        if not name.endswith(_VALUE_SUFFIX):
+            continue
+        base = name[: -len(_VALUE_SUFFIX)]
+        units_name = f"{base}_units"
+        if units_name not in fields:
+            continue
+        label = bound.field.label or base.replace("_", " ").title()
+        help_text = bound.field.help_text or ""
+        params.append((base, label, help_text, fields[units_name]))
+
+    if not params:
+        return ""
+
+    n = len(formset.forms)
+    parts: list[str] = ['<div class="ccp-grid-wrap"><table class="ccp-grid-table"><thead><tr>']
+    parts.append('<th scope="col" class="ccp-grid-corner"></th>')
+    parts.append('<th scope="col" class="ccp-grid-units-col">Units</th>')
+    for i in range(n):
+        parts.append(f'<th scope="col">Point {i + 1}</th>')
+    parts.append("</tr></thead><tbody>")
+
+    for base, label, help_text, units_bf in params:
+        sync_key = f"{scope}-{base}" if scope else base
+        initial_unit = units_bf.value() or ""
+        help_html = (
+            f'<span class="ccp-param-row__help" title="{esc(help_text)}">?</span>'
+            if help_text
+            else ""
+        )
+
+        # Render the visible units select for form 0 with sync hooks.
+        visible_options = []
+        for value, display in units_bf.field.choices:
+            selected = " selected" if value == initial_unit else ""
+            visible_options.append(
+                f'<option value="{esc(value)}"{selected}>{esc(display)}</option>'
+            )
+        visible_select = (
+            f'<select name="{units_bf.html_name}" id="{units_bf.auto_id}" '
+            f'class="form-select form-select-sm ccp-grid-units" '
+            f'data-sync-unit="{sync_key}" '
+            f'onchange="ccpSyncUnit(this)">'
+            f'{"".join(visible_options)}'
+            "</select>"
+        )
+
+        parts.append("<tr>")
+        parts.append(
+            f'<th scope="row" class="ccp-grid-label">{esc(label)}{help_html}</th>'
+        )
+        parts.append(f'<td class="ccp-grid-units-cell">{visible_select}</td>')
+
+        for i, form in enumerate(formset.forms):
+            form_fields = {bf.name: bf for bf in form}
+            value_bf = form_fields[f"{base}_value"]
+            parts.append(f'<td class="ccp-grid-value-cell">{value_bf}</td>')
+
+        parts.append("</tr>")
+
+    parts.append("</tbody></table>")
+
+    # Hidden mirrors for forms 1..n-1 so the formset sees per-form units.
+    for i, form in enumerate(formset.forms):
+        if i == 0:
+            continue
+        form_fields = {bf.name: bf for bf in form}
+        for base, _label, _help, _units_bf in params:
+            units_bf_i = form_fields[f"{base}_units"]
+            initial_unit = units_bf_i.value() or ""
+            sync_key = f"{scope}-{base}" if scope else base
+            parts.append(
+                f'<input type="hidden" name="{units_bf_i.html_name}" '
+                f'value="{esc(initial_unit)}" '
+                f'data-sync-unit="{sync_key}">'
+            )
+    parts.append("</div>")
+    return mark_safe("".join(parts))
+
+
 @register.inclusion_tag("core/partials/expander.html")
 def expander(title: str, body_id: str, expanded: bool = False):
     """Render an expander header. Body is injected via a ``body`` context variable."""

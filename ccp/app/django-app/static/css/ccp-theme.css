@@ -485,6 +485,63 @@ h1, h2, h3, h4, h5, h6 {
   outline: none;
 }
 
+/* ---------- param grid (formset as parameters × points) ---------- */
+.ccp-grid-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--ccp-border);
+  border-radius: var(--ccp-radius);
+  padding: 0.6rem;
+  background: #ffffff;
+}
+.ccp-grid-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0.25rem 0.35rem;
+  font-size: 0.82rem;
+  min-width: 900px;
+}
+.ccp-grid-table thead th {
+  font-weight: 500;
+  color: var(--ccp-muted);
+  background: #f7f9fc;
+  border-radius: var(--ccp-radius);
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+}
+.ccp-grid-table thead th.ccp-grid-corner { background: transparent; }
+.ccp-grid-label {
+  font-weight: 500;
+  color: var(--ccp-text);
+  text-align: left;
+  padding: 0.35rem 0.6rem;
+  white-space: nowrap;
+  background: transparent;
+}
+.ccp-grid-units-col { width: 130px; }
+.ccp-grid-units-cell { width: 130px; }
+.ccp-grid-value-cell { min-width: 110px; }
+.ccp-grid-table tbody td input[type="text"],
+.ccp-grid-table tbody td input[type="number"],
+.ccp-grid-table tbody td select {
+  width: 100%;
+  background: #f0f2f6 !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--ccp-radius) !important;
+  padding: 0.35rem 0.55rem !important;
+  font-size: 0.82rem !important;
+  font-family: inherit !important;
+  color: var(--ccp-text) !important;
+  box-shadow: none !important;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.ccp-grid-table tbody td input:focus,
+.ccp-grid-table tbody td select:focus {
+  background: #ffffff !important;
+  border-color: var(--ccp-primary) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 0.12rem rgba(44, 62, 80, 0.15) !important;
+}
+
 .ccp-quick-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .ccp-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .ccp-fieldset {
