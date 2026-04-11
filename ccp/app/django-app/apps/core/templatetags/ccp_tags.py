@@ -72,6 +72,67 @@ def expander(title: str, body_id: str, expanded: bool = False):
     }
 
 
+@register.simple_tag
+def form_param_rows(form) -> str:
+    """Render a form as Streamlit-style ``label | units | value`` rows.
+
+    Fields following the ``<name>_value`` / ``<name>_units`` convention
+    (ported from ``common.parameters_map``) are paired into a 3-column
+    grid row. Ungrouped fields become full-width rows.
+    """
+    from django.utils.html import conditional_escape as esc
+
+    fields = {f.name: f for f in form}
+    seen: set[str] = set()
+    rows: list[str] = []
+    for name, field in fields.items():
+        if name in seen:
+            continue
+        if name.endswith("_value"):
+            base = name[: -len("_value")]
+            units_name = f"{base}_units"
+            if units_name in fields:
+                label = field.label or base.replace("_", " ").title()
+                help_text = field.field.help_text or ""
+                units_field = fields[units_name]
+                help_html = (
+                    f'<span class="ccp-param-row__help" title="{esc(help_text)}">?</span>'
+                    if help_text
+                    else ""
+                )
+                err_html = ""
+                if field.errors:
+                    err_html = (
+                        '<div class="ccp-param-row__error">'
+                        f"{esc(', '.join(field.errors))}</div>"
+                    )
+                rows.append(
+                    '<div class="ccp-param-row">'
+                    f'<label for="{field.id_for_label}" class="ccp-param-row__label">'
+                    f"{esc(label)}{help_html}</label>"
+                    f'<div class="ccp-param-row__units">{units_field}</div>'
+                    f'<div class="ccp-param-row__value">{field}</div>'
+                    "</div>"
+                    f"{err_html}"
+                )
+                seen.add(name)
+                seen.add(units_name)
+                continue
+        if name.endswith("_units"):
+            base = name[: -len("_units")]
+            if f"{base}_value" in fields:
+                continue
+        label = field.label or name
+        rows.append(
+            '<div class="ccp-param-row ccp-param-row--single">'
+            f'<label for="{field.id_for_label}" class="ccp-param-row__label">{esc(label)}</label>'
+            f'<div class="ccp-param-row__wide">{field}</div>'
+            "</div>"
+        )
+        seen.add(name)
+    return mark_safe('<div class="ccp-param-table">' + "".join(rows) + "</div>")
+
+
 @register.filter
 def format_quantity(q) -> str:
     """Render a :class:`pint.Quantity` as ``"<magnitude> <units>"``.

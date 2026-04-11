@@ -1,0 +1,30 @@
+{% comment %}
+Renders a form as Streamlit-style parameter rows: one row per parameter with
+a 3-column layout (label | units | value). Fields that can't be paired are
+yielded as a single full-width row.
+Required context:
+  rows - list of {"type": "pair"|"single", ...} dicts emitted by the
+         ``form_param_rows`` template tag.
+{% endcomment %}
+<div class="ccp-param-table">
+  {% for row in rows %}
+    {% if row.type == "pair" %}
+      <div class="ccp-param-row">
+        <label for="{{ row.value_field.id_for_label }}" class="ccp-param-row__label">
+          {{ row.label }}
+          {% if row.help %}<span class="ccp-param-row__help" title="{{ row.help }}">?</span>{% endif %}
+        </label>
+        <div class="ccp-param-row__units">{{ row.units_field }}</div>
+        <div class="ccp-param-row__value">{{ row.value_field }}</div>
+      </div>
+      {% if row.value_field.errors %}
+        <div class="ccp-param-row__error">{{ row.value_field.errors|join:", " }}</div>
+      {% endif %}
+    {% else %}
+      <div class="ccp-param-row ccp-param-row--single">
+        <label for="{{ row.field.id_for_label }}" class="ccp-param-row__label">{{ row.label }}</label>
+        <div class="ccp-param-row__wide">{{ row.field }}</div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>

@@ -1,45 +1,58 @@
 {% comment %}
-Gas composition selector — 6 rows of fluid + mole fraction inputs.
-Props:
-  name_prefix  - prefix used for form field names (default "gas")
-  composition  - list of {"component": str, "fraction": float} dicts (optional)
-  fluid_list   - list of str fluids available in the dropdown
+Gas composition selector — 6 gas mixtures × N-component grid, matching the
+Streamlit ``gas_selection_form`` layout.
+
+Required context:
+  fluid_list          - list of str, available fluids for the component dropdown
+  default_components  - list of str, rows shown per column (methane, ethane, ...)
+Optional context:
+  name_prefix         - form field prefix (default "gas")
 {% endcomment %}
 {% with prefix=name_prefix|default:"gas" %}
-<div class="ccp-gas-selection" data-ccp-gas-prefix="{{ prefix }}">
-  <div class="ccp-gas-selection-header">
-    <span class="ccp-gas-selection-title">Gas Composition</span>
-  </div>
-  <table class="ccp-gas-selection-table">
-    <thead>
-      <tr>
-        <th scope="col">Componente</th>
-        <th scope="col">Fração molar</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for i in "123456"|make_list %}
-      <tr class="ccp-gas-row">
-        <td>
-          <select name="{{ prefix }}_component_{{ forloop.counter }}" class="ccp-gas-component">
-            <option value=""></option>
-            {% for fluid in fluid_list %}
-              <option value="{{ fluid }}">{{ fluid }}</option>
+<div class="ccp-gas-grid">
+  <div class="ccp-gas-grid__scroll">
+    {% for gas_index in "012345"|make_list %}
+      <div class="ccp-gas-col">
+        <label class="form-label ccp-gas-col__label">Gas Name</label>
+        <input
+          type="text"
+          class="form-control form-control-sm ccp-gas-col__name"
+          name="{{ prefix }}_{{ gas_index }}_name"
+          value="gas_{{ gas_index }}">
+        <table class="table table-sm table-bordered ccp-gas-col__table mt-2 mb-0">
+          <thead>
+            <tr>
+              <th scope="col">comp.</th>
+              <th scope="col">mol %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for component in default_components %}
+            <tr>
+              <td>
+                <select
+                  name="{{ prefix }}_{{ gas_index }}_component_{{ forloop.counter0 }}"
+                  class="form-select form-select-sm">
+                  {% for fluid in fluid_list %}
+                    <option value="{{ fluid }}"{% if fluid == component %} selected{% endif %}>{{ fluid }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  class="form-control form-control-sm"
+                  name="{{ prefix }}_{{ gas_index }}_molar_fraction_{{ forloop.counter0 }}"
+                  value="0.000">
+              </td>
+            </tr>
             {% endfor %}
-          </select>
-        </td>
-        <td>
-          <input type="number"
-                 step="any"
-                 min="0"
-                 max="1"
-                 name="{{ prefix }}_fraction_{{ forloop.counter }}"
-                 class="ccp-gas-fraction"
-                 value="">
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+  </div>
 </div>
 {% endwith %}

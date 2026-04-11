@@ -27,23 +27,25 @@
   </aside>
 
   <details class="ccp-expander" open>
-    <summary>Seleção de Gás</summary>
-    <div class="body">{{ gas_form.as_p }}</div>
+    <summary>Gas Selection</summary>
+    <div class="body">
+      {% include "core/partials/gas_selection.html" with fluid_list=fluid_list default_components=default_components name_prefix="gas" %}
+    </div>
   </details>
 
   <details class="ccp-expander" open>
     <summary>Data Sheet - First Section</summary>
-    <div class="body">{{ guarantee_section_1_form.as_p }}</div>
+    <div class="body">{% form_param_rows guarantee_section_1_form %}</div>
   </details>
 
   <details class="ccp-expander" open>
     <summary>Data Sheet - Second Section</summary>
-    <div class="body">{{ guarantee_section_2_form.as_p }}</div>
+    <div class="body">{% form_param_rows guarantee_section_2_form %}</div>
   </details>
 
   <details class="ccp-expander">
     <summary>Curvas de Referência</summary>
-    <div class="body">{{ curve_form.as_p }}</div>
+    <div class="body">{% form_param_rows curve_form %}</div>
   </details>
 
   <details class="ccp-expander" open>
@@ -51,9 +53,9 @@
     <div class="body">
       {{ first_section_formset.management_form }}
       {% for f in first_section_formset %}
-        <fieldset>
+        <fieldset class="ccp-fieldset">
           <legend>Point {{ forloop.counter }}</legend>
-          {{ f.as_p }}
+          {% form_param_rows f %}
         </fieldset>
       {% endfor %}
     </div>
@@ -64,9 +66,9 @@
     <div class="body">
       {{ second_section_formset.management_form }}
       {% for f in second_section_formset %}
-        <fieldset>
+        <fieldset class="ccp-fieldset">
           <legend>Point {{ forloop.counter }}</legend>
-          {{ f.as_p }}
+          {% form_param_rows f %}
         </fieldset>
       {% endfor %}
     </div>

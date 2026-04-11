@@ -6,37 +6,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}ccp{% endblock %}</title>
   <link rel="icon" type="image/x-icon" href="{% static 'img/favicon.ico' %}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="{% static 'css/ccp-theme.css' %}">
   <script src="{% static 'js/plotly.min.js' %}"></script>
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
 </head>
 <body>
-  <header class="ccp-header">
-    <div class="ccp-header__logo">
-      <img src="{% static 'img/ccp.png' %}" alt="ccp" width="100">
+  <div class="ccp-layout">
+    <aside class="ccp-sidebar">
+      <a class="ccp-sidebar__brand" href="/">
+        <img src="{% static 'img/ccp.png' %}" alt="ccp" width="72">
+        <span class="ccp-sidebar__brand-text">ccp</span>
+      </a>
+      <nav class="nav flex-column ccp-sidebar__nav">
+        <a class="nav-link{% if request.path == '/' %} active{% endif %}" href="/">Início</a>
+        <a class="nav-link{% if '/straight-through/' in request.path %} active{% endif %}" href="/straight-through/">Straight-Through</a>
+        <a class="nav-link{% if '/back-to-back/' in request.path %} active{% endif %}" href="/back-to-back/">Back-To-Back</a>
+        <a class="nav-link{% if '/curves-conversion/' in request.path %} active{% endif %}" href="/curves-conversion/">Curves Conversion</a>
+        <a class="nav-link{% if '/performance-evaluation/' in request.path %} active{% endif %}" href="/performance-evaluation/config/">Performance Evaluation</a>
+      </nav>
+      <div class="ccp-sidebar__footer">
+        <a href="https://codigo.petrobras.com.br/equipamentos-dinamicos/ccp/-/issues/new" target="_blank" rel="noopener">
+          Reportar issue
+        </a>
+      </div>
+    </aside>
+
+    <div class="ccp-content">
+      <header class="ccp-topbar">
+        <h1 class="ccp-topbar__title">{% block page_title %}ccp - Centrifugal Compressor Performance{% endblock %}</h1>
+      </header>
+
+      <main class="ccp-main container-fluid py-4">
+        {% block content %}{% endblock %}
+      </main>
     </div>
-    <div class="ccp-header__title">
-      <h1>ccp - Centrifugal Compressor Peformance</h1>
-    </div>
-  </header>
-
-  <nav class="ccp-nav">
-    <a href="/">In&iacute;cio</a>
-    <a href="/straight-through/">Straight-Through</a>
-    <a href="/back-to-back/">Back-To-Back</a>
-    <a href="/curves-conversion/">Curves Conversion</a>
-    <a href="/performance-evaluation/">Performance Evaluation</a>
-  </nav>
-
-  <main class="ccp-main">
-    {% block content %}{% endblock %}
-  </main>
-
-  <footer class="ccp-footer">
-    <a href="https://codigo.petrobras.com.br/equipamentos-dinamicos/ccp/-/issues/new">
-      Reportar issue
-    </a>
-  </footer>
+  </div>
 </body>
 </html>

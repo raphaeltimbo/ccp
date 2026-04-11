@@ -67,7 +67,11 @@ def _session_id(request: HttpRequest) -> str:
 
 def _context(request: HttpRequest, **extra) -> dict:
     """Build the default template context, merging *extra*."""
+    from apps.core.services.gas_composition import DEFAULT_COMPONENTS, FLUID_LIST
+
     ctx = {
+        "fluid_list": FLUID_LIST,
+        "default_components": DEFAULT_COMPONENTS,
         "sidebar_form": SidebarOptionsForm(),
         "gas_form": GasCompositionForm(),
         "guarantee_section_1_form": GuaranteePointForm(
