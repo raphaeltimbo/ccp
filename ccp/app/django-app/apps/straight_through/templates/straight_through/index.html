@@ -2,9 +2,10 @@
 {% load ccp_tags %}
 
 {% block title %}Performance Test Straight-Through Compressor{% endblock %}
+{% block page_title %}Performance Test Straight-Through Compressor{% endblock %}
 
 {% block content %}
-<h2>Performance Test Straight-Through Compressor</h2>
+<p class="text-muted">Ferramenta para avaliação de desempenho de compressores straight-through segundo a ASME PTC 10.</p>
 
 <form id="straight-through-form"
       method="post"
@@ -12,54 +13,53 @@
       hx-target="#results"
       hx-swap="innerHTML"
       enctype="multipart/form-data">
-    {% csrf_token %}
+  {% csrf_token %}
 
-    <aside class="sidebar">
-        <details open class="expander">
-            <summary>Opcoes</summary>
-            {{ sidebar_form.as_p }}
-        </details>
-        <details class="expander">
-            <summary>Arquivo</summary>
-            <a href="{% url 'straight_through:save_ccp' %}">Salvar .ccp</a>
-            <form method="post"
-                  action="{% url 'straight_through:load_ccp' %}"
-                  enctype="multipart/form-data">
-                {% csrf_token %}
-                <input type="file" name="file" accept=".ccp">
-                <button type="submit">Carregar</button>
-            </form>
-        </details>
-    </aside>
+  <details class="ccp-expander" open>
+    <summary>Opções</summary>
+    <div class="body">{% form_param_rows sidebar_form %}</div>
+  </details>
 
-    <section>
-        <details open class="expander">
-            <summary>Data Sheet</summary>
-            {% include "straight_through/_guarantee.html" %}
-        </details>
+  <details class="ccp-expander">
+    <summary>Arquivo</summary>
+    <div class="body">
+      <p><a class="btn btn-outline-secondary btn-sm" href="{% url 'straight_through:save_ccp' %}">Salvar .ccp</a></p>
+      <div>
+        <input type="file" name="ccp_file" accept=".ccp"
+               hx-post="{% url 'straight_through:load_ccp' %}"
+               hx-encoding="multipart/form-data"
+               hx-target="body"
+               hx-swap="innerHTML">
+      </div>
+    </div>
+  </details>
 
-        <details class="expander">
-            <summary>Curves</summary>
-            <div id="curves-slot">
-                {% include "straight_through/_curves.html" %}
-            </div>
-        </details>
+  <details class="ccp-expander" open>
+    <summary>Data Sheet</summary>
+    <div class="body">{% include "straight_through/_guarantee.html" %}</div>
+  </details>
 
-        <details class="expander">
-            <summary>Test Data</summary>
-            {% include "straight_through/_test_points.html" %}
-        </details>
+  <details class="ccp-expander">
+    <summary>Curves</summary>
+    <div class="body" id="curves-slot">
+      {% include "straight_through/_curves.html" %}
+    </div>
+  </details>
 
-        <div class="actions">
-            <button type="submit" name="action" value="calculate" class="primary">Calculate</button>
-            <button type="submit" name="action" value="calculate_speed" class="primary">Calculate Speed</button>
-        </div>
-    </section>
+  <details class="ccp-expander">
+    <summary>Test Data</summary>
+    <div class="body">{% include "straight_through/_test_points.html" %}</div>
+  </details>
+
+  <div class="ccp-actions mt-3">
+    <button type="submit" name="action" value="calculate" class="btn btn-primary">Calculate</button>
+    <button type="submit" name="action" value="calculate_speed" class="btn btn-outline-primary">Calculate Speed</button>
+  </div>
 </form>
 
-<section id="results">
-    {% if result %}
-        {% include "straight_through/_results.html" %}
-    {% endif %}
+<section id="results" class="mt-4">
+  {% if result %}
+    {% include "straight_through/_results.html" %}
+  {% endif %}
 </section>
 {% endblock %}

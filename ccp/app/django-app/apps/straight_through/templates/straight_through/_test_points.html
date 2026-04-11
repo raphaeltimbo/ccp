@@ -1,20 +1,23 @@
-<table class="grid">
+{# Test point matrix: one parameter per row, one column per test point. #}
+<div class="ccp-test-grid">
+  <table class="ccp-test-grid__table">
     <thead>
-        <tr>
-            <th></th>
-            <th>Units</th>
-            {% for i in test_point_indices %}<th>Point {{ i }}</th>{% endfor %}
-        </tr>
+      <tr>
+        <th scope="col"></th>
+        <th scope="col">Units</th>
+        {% for i in test_point_indices %}<th scope="col">Point {{ i }}</th>{% endfor %}
+      </tr>
     </thead>
     <tbody>
-        {% for parameter in test_parameters %}
-            <tr>
-                <th>{{ parameter }}</th>
-                <td><input type="text" name="{{ parameter }}_unit_test" size="6"></td>
-                {% for i in test_point_indices %}
-                    <td><input type="text" name="{{ parameter }}_point_{{ i }}"></td>
-                {% endfor %}
-            </tr>
-        {% endfor %}
+      {% for parameter in test_parameters %}
+        <tr>
+          <th scope="row">{{ parameter }}</th>
+          <td><input type="text" name="{{ parameter }}_unit_test" class="ccp-test-grid__unit"></td>
+          {% for i in test_point_indices %}
+            <td><input type="text" name="{{ parameter }}_point_{{ i }}" class="ccp-test-grid__value"></td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
     </tbody>
-</table>
+  </table>
+</div>

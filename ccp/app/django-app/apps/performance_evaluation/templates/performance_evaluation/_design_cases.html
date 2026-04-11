@@ -1,48 +1,58 @@
 {# Design cases A-E suction conditions grid. #}
 <details class="ccp-expander" open>
   <summary>Condições de Sucção - Casos de Projeto</summary>
-  <p>Defina as condições de sucção de cada caso de projeto (A, B, C, D, E).</p>
+  <div class="body">
+    <p class="text-muted">Defina as condições de sucção de cada caso de projeto (A, B, C, D, E).</p>
 
-  {{ forms.design_formset.management_form }}
-  <table class="design-cases">
-    <thead>
-      <tr>
-        <th>Parâmetro</th>
-        {% for case in cases %}<th>Caso {{ case }}</th>{% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Gas</td>
-        {% for form in forms.design_formset %}
-          <td>{{ form.case }}{{ form.gas }}</td>
-        {% endfor %}
-      </tr>
-      <tr>
-        <td>Pressão de Sucção {% with first=forms.design_formset.0 %}{{ first.suc_p_unit }}{% endwith %}</td>
-        {% for form in forms.design_formset %}
-          <td>{{ form.suc_p }}{% for e in form.suc_p.errors %}<span class="errors">{{ e }}</span>{% endfor %}</td>
-        {% endfor %}
-      </tr>
-      <tr>
-        <td>Temperatura de Sucção {% with first=forms.design_formset.0 %}{{ first.suc_T_unit }}{% endwith %}</td>
-        {% for form in forms.design_formset %}
-          <td>{{ form.suc_T }}{% for e in form.suc_T.errors %}<span class="errors">{{ e }}</span>{% endfor %}</td>
-        {% endfor %}
-      </tr>
-    </tbody>
-  </table>
-
-  <h4>Upload de Curvas de Desempenho</h4>
-  {% for case in cases %}
-    <div class="case-curves">
-      <strong>Caso {{ case }}</strong>
-      <form method="post" action="{% url 'performance_evaluation:upload_curves' case %}" enctype="multipart/form-data">
-        {% csrf_token %}
-        <input type="file" name="curves_file_1" accept=".csv">
-        <input type="file" name="curves_file_2" accept=".csv">
-        <button type="submit">Carregar Curvas do Caso {{ case }}</button>
-      </form>
+    {{ forms.design_formset.management_form }}
+    <div class="ccp-design-cases table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th scope="col">Parâmetro</th>
+            {% for case in cases %}<th scope="col" class="text-center">Caso {{ case }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Gas</th>
+            {% for form in forms.design_formset %}
+              <td>{{ form.case }}{{ form.gas }}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th scope="row">Pressão de Sucção
+              {% with first=forms.design_formset.0 %}{{ first.suc_p_unit }}{% endwith %}
+            </th>
+            {% for form in forms.design_formset %}
+              <td>{{ form.suc_p }}{% for e in form.suc_p.errors %}<div class="ccp-param-row__error">{{ e }}</div>{% endfor %}</td>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th scope="row">Temperatura de Sucção
+              {% with first=forms.design_formset.0 %}{{ first.suc_T_unit }}{% endwith %}
+            </th>
+            {% for form in forms.design_formset %}
+              <td>{{ form.suc_T }}{% for e in form.suc_T.errors %}<div class="ccp-param-row__error">{{ e }}</div>{% endfor %}</td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
     </div>
-  {% endfor %}
+
+    <h5 class="mt-3">Upload de Curvas de Desempenho</h5>
+    <div class="ccp-case-uploads">
+      {% for case in cases %}
+        <div class="ccp-case-upload">
+          <strong>Caso {{ case }}</strong>
+          <form method="post" action="{% url 'performance_evaluation:upload_curves' case %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="file" name="curves_file_1" accept=".csv" class="form-control form-control-sm">
+            <input type="file" name="curves_file_2" accept=".csv" class="form-control form-control-sm">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Carregar</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
 </details>

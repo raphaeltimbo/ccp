@@ -1,25 +1,29 @@
 {# Curve PNG uploader with x/y range inputs. Posts to /upload-curve/ via HTMX. #}
-<div>
-    {% for curve in curves %}
-        <h3>{{ curve|title }}</h3>
-        <form hx-post="{% url 'straight_through:upload_curve' %}"
-              hx-encoding="multipart/form-data"
-              hx-target="#curves-slot"
-              hx-swap="outerHTML">
-            {% csrf_token %}
-            <input type="hidden" name="curve" value="{{ curve }}">
-            <input type="file" name="image" accept="image/png">
-            <label>x range
-                <input type="number" step="any" name="x_lower" placeholder="lower">
-                <input type="number" step="any" name="x_upper" placeholder="upper">
-                <input type="text" name="x_units" placeholder="units">
-            </label>
-            <label>y range
-                <input type="number" step="any" name="y_lower" placeholder="lower">
-                <input type="number" step="any" name="y_upper" placeholder="upper">
-                <input type="text" name="y_units" placeholder="units">
-            </label>
-            <button type="submit">Upload</button>
-        </form>
-    {% endfor %}
+<div class="ccp-curve-uploads">
+  {% for curve in curves %}
+    <div class="ccp-curve-card">
+      <h3 class="ccp-curve-card__title">{{ curve|title }}</h3>
+      <form hx-post="{% url 'straight_through:upload_curve' %}"
+            hx-encoding="multipart/form-data"
+            hx-target="#curves-slot"
+            hx-swap="outerHTML"
+            class="ccp-curve-card__form">
+        {% csrf_token %}
+        <input type="hidden" name="curve" value="{{ curve }}">
+        <label class="ccp-curve-card__file">
+          <span>PNG</span>
+          <input type="file" name="image" accept="image/png">
+        </label>
+        <div class="ccp-curve-card__ranges">
+          <label>x lower<input type="number" step="any" name="x_lower"></label>
+          <label>x upper<input type="number" step="any" name="x_upper"></label>
+          <label>x units<input type="text" name="x_units"></label>
+          <label>y lower<input type="number" step="any" name="y_lower"></label>
+          <label>y upper<input type="number" step="any" name="y_upper"></label>
+          <label>y units<input type="text" name="y_units"></label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Upload</button>
+      </form>
+    </div>
+  {% endfor %}
 </div>

@@ -72,13 +72,42 @@ def expander(title: str, body_id: str, expanded: bool = False):
     }
 
 
+_UNIT_SUFFIXES = ("_units", "_unit")
+_VALUE_SUFFIX = "_value"
+
+
+def _pair_field(name: str, fields: dict) -> tuple[str, str] | None:
+    """Return ``(base, units_name)`` if *name* is a value field with a
+    matching units field, else ``None``.
+
+    Supports both conventions in use by the ported forms:
+    * ``<base>_value`` + ``<base>_units`` (back_to_back, parameter_map)
+    * ``<base>`` + ``<base>_unit`` / ``<base>_units`` (straight_through)
+    """
+    if name.endswith(_VALUE_SUFFIX):
+        base = name[: -len(_VALUE_SUFFIX)]
+        for suffix in _UNIT_SUFFIXES:
+            candidate = f"{base}{suffix}"
+            if candidate in fields:
+                return base, candidate
+        return None
+    if any(name.endswith(s) for s in _UNIT_SUFFIXES):
+        return None
+    for suffix in _UNIT_SUFFIXES:
+        candidate = f"{name}{suffix}"
+        if candidate in fields:
+            return name, candidate
+    return None
+
+
 @register.simple_tag
 def form_param_rows(form) -> str:
     """Render a form as Streamlit-style ``label | units | value`` rows.
 
-    Fields following the ``<name>_value`` / ``<name>_units`` convention
-    (ported from ``common.parameters_map``) are paired into a 3-column
-    grid row. Ungrouped fields become full-width rows.
+    Fields whose names follow ``<base>_value``/``<base>_units`` or
+    ``<base>``/``<base>_unit`` conventions are collapsed into a 3-column
+    grid row (label | units dropdown | value input). Any field that
+    cannot be paired becomes a full-width row so no form data is lost.
     """
     from django.utils.html import conditional_escape as esc
 
@@ -88,39 +117,38 @@ def form_param_rows(form) -> str:
     for name, field in fields.items():
         if name in seen:
             continue
-        if name.endswith("_value"):
-            base = name[: -len("_value")]
-            units_name = f"{base}_units"
-            if units_name in fields:
-                label = field.label or base.replace("_", " ").title()
-                help_text = field.field.help_text or ""
-                units_field = fields[units_name]
-                help_html = (
-                    f'<span class="ccp-param-row__help" title="{esc(help_text)}">?</span>'
-                    if help_text
-                    else ""
+        pairing = _pair_field(name, fields)
+        if pairing is not None:
+            base, units_name = pairing
+            units_field = fields[units_name]
+            label = field.label or base.replace("_", " ").title()
+            help_text = field.field.help_text or ""
+            help_html = (
+                f'<span class="ccp-param-row__help" title="{esc(help_text)}">?</span>'
+                if help_text
+                else ""
+            )
+            err_html = ""
+            if field.errors:
+                err_html = (
+                    '<div class="ccp-param-row__error">'
+                    f"{esc(', '.join(field.errors))}</div>"
                 )
-                err_html = ""
-                if field.errors:
-                    err_html = (
-                        '<div class="ccp-param-row__error">'
-                        f"{esc(', '.join(field.errors))}</div>"
-                    )
-                rows.append(
-                    '<div class="ccp-param-row">'
-                    f'<label for="{field.id_for_label}" class="ccp-param-row__label">'
-                    f"{esc(label)}{help_html}</label>"
-                    f'<div class="ccp-param-row__units">{units_field}</div>'
-                    f'<div class="ccp-param-row__value">{field}</div>'
-                    "</div>"
-                    f"{err_html}"
-                )
-                seen.add(name)
-                seen.add(units_name)
-                continue
-        if name.endswith("_units"):
-            base = name[: -len("_units")]
-            if f"{base}_value" in fields:
+            rows.append(
+                '<div class="ccp-param-row">'
+                f'<label for="{field.id_for_label}" class="ccp-param-row__label">'
+                f"{esc(label)}{help_html}</label>"
+                f'<div class="ccp-param-row__units">{units_field}</div>'
+                f'<div class="ccp-param-row__value">{field}</div>'
+                "</div>"
+                f"{err_html}"
+            )
+            seen.add(name)
+            seen.add(units_name)
+            continue
+        if any(name.endswith(s) for s in _UNIT_SUFFIXES):
+            base = name.rsplit("_", 1)[0]
+            if base in fields or f"{base}_value" in fields:
                 continue
         label = field.label or name
         rows.append(
