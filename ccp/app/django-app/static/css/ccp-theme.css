@@ -112,21 +112,21 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .ccp-topbar {
-  padding: 1.25rem 2rem 0.5rem;
+  padding: 1rem 1.5rem 0.75rem;
   border-bottom: 1px solid var(--ccp-border);
   background: #ffffff;
 }
 .ccp-topbar__title {
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   margin: 0;
   font-weight: 600;
 }
 
 .ccp-main {
   flex: 1 1 auto;
-  padding-left: 2rem !important;
-  padding-right: 2rem !important;
-  max-width: 1400px;
+  width: 100%;
+  max-width: none;
+  padding: 1.25rem 1.5rem !important;
 }
 
 /* ---------- Bootstrap element overrides (flatten) ---------- */
@@ -204,11 +204,15 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ---------- legacy .ccp-* classes (existing partials still use these) ---------- */
 
+.ccp-main.container-fluid {
+  --bs-gutter-x: 0;
+}
 .ccp-expander {
   border: 1px solid var(--ccp-border);
   border-radius: var(--ccp-radius);
   margin-bottom: var(--ccp-gap-v);
   background: #ffffff;
+  width: 100%;
 }
 .ccp-expander__header {
   padding: 0.6rem 0.85rem;
@@ -230,15 +234,16 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  max-width: 960px;
+  width: 100%;
 }
 .ccp-param-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(140px, 1fr) minmax(140px, 1fr);
-  gap: 0.75rem;
+  grid-template-columns: minmax(200px, 1.4fr) minmax(140px, 1fr) minmax(160px, 2fr);
+  gap: 1rem;
   align-items: center;
+  width: 100%;
 }
-.ccp-param-row--single { grid-template-columns: minmax(180px, 1.2fr) 1fr; }
+.ccp-param-row--single { grid-template-columns: minmax(200px, 1.4fr) 1fr; }
 .ccp-param-row__label {
   font-size: 0.85rem;
   color: var(--ccp-text);
