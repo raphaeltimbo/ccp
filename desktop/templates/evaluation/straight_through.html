@@ -1,0 +1,552 @@
+{% extends "base.html" %}
+
+{% block title %}Straight-Through{% endblock %}
+
+{% block nav_st %}active{% endblock %}
+
+{% block breadcrumbs %}
+<span>Analysis</span>
+<span class="sep">&rsaquo;</span>
+<b>Straight-through compressor</b>
+{% endblock %}
+
+{% block top_right %}
+<button class="btn accent" id="runBtn">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+  Calculate
+</button>
+<button class="btn" id="calcSpeedBtn">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+  Calculate Speed
+</button>
+<button class="btn" id="calcFlowBtn">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M2 12h20"/></svg>
+  Calculate Flowrate
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="title">Straight-through compressor</h1>
+    <p>Performance test for single-section centrifugal compressor. Fill in the data sheet, test data, and run the evaluation.</p>
+  </div>
+  <div class="meta">
+    <div>Last run <b id="lastRun">&mdash;</b></div>
+    <div>EOS <b>Peng-Robinson</b></div>
+  </div>
+</div>
+
+<!-- STEP RAIL -->
+<div class="steps" role="tablist">
+  <div class="step" aria-current="true" data-step="1">
+    <div class="num"><span>1</span></div>
+    <div><div class="label">Gas selection</div><div class="hint">{{ cases|length }} gases</div></div>
+  </div>
+  <div class="step" data-step="2">
+    <div class="num"><span>2</span></div>
+    <div><div class="label">Data sheet</div><div class="hint">guarantee</div></div>
+  </div>
+  <div class="step" data-step="3">
+    <div class="num"><span>3</span></div>
+    <div><div class="label">Test data</div><div class="hint">{{ num_test_points }} points</div></div>
+  </div>
+  <div class="step" data-step="4">
+    <div class="num"><span>4</span></div>
+    <div><div class="label">Curves</div><div class="hint">upload</div></div>
+  </div>
+  <div class="step" data-step="5">
+    <div class="num"><span>5</span></div>
+    <div><div class="label">Results</div><div class="hint">export</div></div>
+  </div>
+</div>
+
+<!-- OPTIONS PANEL (slide-out from right) -->
+<div id="optionsPanel" class="options-panel" x-data="{ open: false }" x-show="open" @options-toggle.window="open = !open" x-cloak>
+  <div class="options-inner">
+    <h4>Options <span class="close" @click="open = false">&times;</span></h4>
+
+    <div class="opt-group">
+      <label class="opt-check"><input type="checkbox" name="reynolds_correction" checked> Reynolds Correction</label>
+      <label class="opt-check"><input type="checkbox" name="casing_heat_loss" checked> Casing Heat Loss</label>
+      <label class="opt-check"><input type="checkbox" name="bearing_mechanical_losses"> Bearing Mechanical Losses</label>
+      <label class="opt-check"><input type="checkbox" name="calculate_leakages" checked> Calculate Leakages</label>
+      <label class="opt-check"><input type="checkbox" name="seal_gas_flow" checked> Seal Gas Flow</label>
+      <label class="opt-check"><input type="checkbox" name="variable_speed" checked> Variable Speed</label>
+      <label class="opt-check"><input type="checkbox" name="show_points" checked> Show Points</label>
+    </div>
+
+    <div class="opt-group">
+      <label class="opt-label">Ambient Pressure</label>
+      <div class="opt-row">
+        <input type="text" value="1.01325" name="ambient_pressure" class="opt-input">
+        <select name="ambient_pressure_unit" class="opt-select">
+          {% for u in pressure_units %}<option{% if u == "bar" %} selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="opt-group">
+      <label class="opt-label">Oil Properties</label>
+      <label class="opt-check"><input type="checkbox" name="oil_specific_heat"> Specify Oil Cp/Density</label>
+      <label class="opt-check"><input type="checkbox" name="oil_iso"> Use ISO Classification</label>
+      <select name="oil_iso_classification" class="opt-select" style="width:100%; margin-top:4px;">
+        <option>VG 32</option>
+        <option>VG 46</option>
+      </select>
+    </div>
+
+    <div class="opt-group">
+      <label class="opt-label">Polytropic Method</label>
+      <select name="polytropic_method" class="opt-select" style="width:100%;">
+        {% for m in polytropic_methods %}
+        <option value="{{ m.value }}"{% if m.value == "sandberg_colby" %} selected{% endif %}>{{ m.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- GAS SELECTION -->
+<section class="section" x-data="{ collapsed: false }">
+  <header @click="if (!$event.target.closest('.actions')) collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Gas selection</h2>
+    <span class="desc">Mole-% composition per gas</span>
+    <div class="actions">
+      <span style="font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);">{{ cases|length }} gases &middot; {{ rows|length }} components</span>
+      <button class="btn ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M12 3v18"/></svg>Normalize
+      </button>
+      <button class="btn ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 14v5h16v-5"/><path d="M12 4v12"/><path d="m8 10 4 4 4-4"/></svg>Import
+      </button>
+      <button class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Add gas
+      </button>
+    </div>
+  </header>
+  <div class="body" x-show="!collapsed">
+    <div class="gas-wrap">
+      <table class="gas" id="gasTable">
+        <colgroup>
+          <col style="width: 180px;">
+          {% for case in cases %}<col style="width: 140px;">{% endfor %}
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="sticky" style="text-align:left;">
+              <span style="font-family: var(--font-mono); color: var(--ink-4); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;">Component</span>
+            </th>
+            {% for case in cases %}
+            <th class="case-head">
+              <span class="case-dot" style="background: oklch(62% 0.14 {{ case.hue }});"></span>
+              <input type="text" class="case-name-input" value="{{ case.name }}" data-case-idx="{{ forloop.counter0 }}" spellcheck="false" autocomplete="off">
+            </th>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th class="sticky unit" style="text-align:left;">mol %</th>
+            {% for case in cases %}<th class="unit">mol %</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="sticky component">{{ row.component.key }}<span class="formula">{{ row.component.formula }}</span></td>
+            {% for cell in row.cells %}
+            <td>
+              <label class="cell-edit" style="--bar: {{ cell.bar }};">
+                <input type="text" inputmode="decimal"
+                       class="cell-num-input{% if cell.is_zero %} zero{% endif %}{% if cell.is_dominant %} dominant{% endif %}"
+                       value="{{ cell.value }}"
+                       data-row="{{ forloop.parentloop.counter0 }}"
+                       data-case="{{ forloop.counter0 }}"
+                       spellcheck="false" autocomplete="off">
+              </label>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          <tr class="total">
+            <td class="sticky">&Sigma; total</td>
+            {% for total in totals %}
+            <td>
+              <span class="cell-num total-cell{% if not total.ok %} bad{% endif %}" data-case="{{ forloop.counter0 }}">{{ total.value }}</span>
+            </td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- DATA SHEET (Guarantee Point) -->
+<section class="section" x-data="{ collapsed: false }">
+  <header @click="if (!$event.target.closest('.actions')) collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Data sheet</h2>
+    <span class="desc">Guarantee point</span>
+    <div class="actions">
+      <button class="btn ghost" @click.stop="$dispatch('options-toggle')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        Options
+      </button>
+    </div>
+  </header>
+  <div class="body" x-show="!collapsed">
+    <!-- Gas selection row -->
+    <div class="param-row param-row--header">
+      <div class="param-label">Gas Selection</div>
+      <div class="param-unit"></div>
+      <div class="param-value">
+        <select name="gas_point_guarantee" class="param-select">
+          {% for name in gas_names %}<option>{{ name }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    {% for param in data_sheet_parameters %}
+    <div class="param-row">
+      <div class="param-label" {% if param.help %}title="{{ param.help }}"{% endif %}>{{ param.label }}</div>
+      <div class="param-unit">
+        <select name="{{ param.key }}_units_guarantee" class="param-select">
+          {% for u in param.units %}<option>{{ u }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="param-value">
+        <input type="text" name="{{ param.key }}_guarantee" class="param-input" spellcheck="false" autocomplete="off">
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- TEST DATA -->
+<section class="section" x-data="{ collapsed: false }">
+  <header @click="if (!$event.target.closest('.actions')) collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Test data</h2>
+    <span class="desc">{{ num_test_points }} test points</span>
+  </header>
+  <div class="body" x-show="!collapsed">
+    <div class="test-table-wrap">
+      <table class="test-table">
+        <colgroup>
+          <col style="width: 200px;">
+          <col style="width: 120px;">
+          {% for i in point_range %}<col style="width: 120px;">{% endfor %}
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="sticky" style="text-align:left;"></th>
+            <th>Units</th>
+            {% for i in point_range %}<th>Point {{ i }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Gas selection row -->
+          <tr>
+            <td class="sticky param-label-cell">Gas Selection</td>
+            <td></td>
+            {% for i in point_range %}
+            <td>
+              <select name="gas_point_{{ i }}" class="td-select">
+                {% for name in gas_names %}<option>{{ name }}</option>{% endfor %}
+              </select>
+            </td>
+            {% endfor %}
+          </tr>
+          {% for param in test_parameters %}
+          <tr{% if param.group == "oil" %} class="oil-row"{% elif param.group == "seal_gas" %} class="seal-row"{% endif %}>
+            <td class="sticky param-label-cell" {% if param.help %}title="{{ param.help }}"{% endif %}>{{ param.label }}</td>
+            <td>
+              <select name="{{ param.key }}_units" class="td-select">
+                {% for u in param.units %}<option>{{ u }}</option>{% endfor %}
+              </select>
+            </td>
+            {% for i in point_range %}
+            <td>
+              <input type="text" name="{{ param.key }}_point_{{ i }}" class="td-input" spellcheck="false" autocomplete="off">
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- CURVES -->
+<section class="section" x-data="{ collapsed: true }">
+  <header @click="if (!$event.target.closest('.actions')) collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Curves</h2>
+    <span class="desc">Upload performance curve images</span>
+  </header>
+  <div class="body" x-show="!collapsed">
+    {% for curve in curve_types %}
+    <div class="curve-block">
+      <div class="curve-header">
+        <h3 class="curve-title">{{ curve.label }}</h3>
+        <label class="btn ghost curve-upload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 14v5h16v-5"/><path d="M12 4v12"/><path d="m8 10 4 4 4-4"/></svg>
+          Upload PNG
+          <input type="file" accept=".png" name="fig_{{ curve.key }}" hidden>
+        </label>
+      </div>
+      <div class="curve-ranges">
+        <div class="curve-range">
+          <span class="range-label">X range</span>
+          <select name="x_{{ curve.key }}_flow_units" class="param-select param-select--sm">
+            {% for u in flow_v_units %}<option>{{ u }}</option>{% endfor %}
+          </select>
+          <input type="text" name="x_{{ curve.key }}_lower" class="param-input param-input--sm" placeholder="lower">
+          <input type="text" name="x_{{ curve.key }}_upper" class="param-input param-input--sm" placeholder="upper">
+        </div>
+        <div class="curve-range">
+          <span class="range-label">Y range</span>
+          <select name="y_{{ curve.key }}_units" class="param-select param-select--sm">
+            {% for u in curve.units|default:"" %}<option>{{ u }}</option>{% endfor %}
+          </select>
+          <input type="text" name="y_{{ curve.key }}_lower" class="param-input param-input--sm" placeholder="lower">
+          <input type="text" name="y_{{ curve.key }}_upper" class="param-input param-input--sm" placeholder="upper">
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- FLOWRATE CALCULATION -->
+<section class="section" x-data="{ collapsed: true }">
+  <header @click="if (!$event.target.closest('.actions')) collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Flowrate calculation</h2>
+    <span class="desc">Orifice plate method</span>
+  </header>
+  <div class="body" x-show="!collapsed">
+    <div class="test-table-wrap">
+      <table class="test-table">
+        <colgroup>
+          <col style="width: 200px;">
+          <col style="width: 120px;">
+          {% for i in point_range %}<col style="width: 120px;">{% endfor %}
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="sticky" style="text-align:left;"></th>
+            <th>Units</th>
+            {% for i in point_range %}<th>Point {{ i }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Gas selection row -->
+          <tr>
+            <td class="sticky param-label-cell">Gas Selection</td>
+            <td></td>
+            {% for i in point_range %}
+            <td>
+              <select name="gas_fo_{{ i }}" class="td-select">
+                {% for name in gas_names %}<option>{{ name }}</option>{% endfor %}
+              </select>
+            </td>
+            {% endfor %}
+          </tr>
+          {% for param in flowrate_parameters %}
+          <tr>
+            <td class="sticky param-label-cell" {% if param.help %}title="{{ param.help }}"{% endif %}>{{ param.label }}</td>
+            <td>
+              {% if not param.is_select %}
+              <select name="{{ param.key }}_units" class="td-select">
+                {% for u in param.units %}<option>{{ u }}</option>{% endfor %}
+              </select>
+              {% endif %}
+            </td>
+            {% for i in point_range %}
+            <td>
+              {% if param.is_select %}
+              <select name="{{ param.key }}_{{ i }}" class="td-select">
+                {% for u in param.units %}<option>{{ u }}</option>{% endfor %}
+              </select>
+              {% else %}
+              <input type="text" name="{{ param.key }}_{{ i }}" class="td-input" spellcheck="false" autocomplete="off" {% if param.readonly %}readonly{% endif %}>
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS (shown after calculation) -->
+<section class="section" id="resultsSection" x-data="{ collapsed: true }" style="display:none;">
+  <header @click="if (!$event.target.closest('.actions')) collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Results</h2>
+    <span class="desc">Performance evaluation output</span>
+    <div class="actions">
+      <button class="btn ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 14v5h16v-5"/><path d="M12 4v12"/><path d="m8 10 4 4 4-4"/></svg>Download XLSX
+      </button>
+    </div>
+  </header>
+  <div class="body" x-show="!collapsed">
+    <div id="resultsContent" style="padding: 24px; color: var(--ink-3); font-size: 13px;">
+      Results will appear here after calculation.
+    </div>
+  </div>
+</section>
+
+<div style="height: 24px;"></div>
+{% endblock %}
+
+{% block inspector %}
+<aside class="insp" aria-label="Inspector">
+  <div class="blk">
+    <h3>Configuration</h3>
+    <div class="kv"><span class="k">Type</span><span class="v">Straight-through</span></div>
+    <div class="kv"><span class="k">Method</span><span class="v">Sandberg-Colby</span></div>
+    <div class="kv"><span class="k">Reynolds corr.</span><span class="v">Yes</span></div>
+    <div class="kv"><span class="k">Heat loss</span><span class="v">Yes</span></div>
+    <div class="kv"><span class="k">Leakages</span><span class="v">Yes</span></div>
+  </div>
+
+  <div class="blk">
+    <h3>Guarantee point</h3>
+    <div id="inspGuarantee" style="color: var(--ink-3); font-size: 12px;">
+      Fill in the data sheet to see the guarantee point summary.
+    </div>
+  </div>
+
+  <div class="blk">
+    <h3>Pipeline</h3>
+    <div class="timeline">
+      <div class="tl active">
+        <div class="pt"></div>
+        <div><div class="t">Gas selection</div><div class="d">Define gas compositions</div><div class="at">step 1</div></div>
+      </div>
+      <div class="tl">
+        <div class="pt"></div>
+        <div><div class="t">Data sheet</div><div class="d">Guarantee point parameters</div><div class="at">step 2</div></div>
+      </div>
+      <div class="tl">
+        <div class="pt"></div>
+        <div><div class="t">Test data</div><div class="d">{{ num_test_points }} test points</div><div class="at">step 3</div></div>
+      </div>
+      <div class="tl">
+        <div class="pt"></div>
+        <div><div class="t">Calculate</div><div class="d">Polytropic head &amp; efficiency</div><div class="at">&mdash;</div></div>
+      </div>
+      <div class="tl">
+        <div class="pt"></div>
+        <div><div class="t">Results</div><div class="d">Tables &middot; Plots &middot; Export</div><div class="at">&mdash;</div></div>
+      </div>
+    </div>
+  </div>
+</aside>
+{% endblock %}
+
+{% block status %}
+<span class="chip"><span class="dot"></span> <b>Ready</b></span>
+<span>EOS: <b>Peng-Robinson</b></span>
+<span>Units: <b>SI</b></span>
+<span class="spacer"></span>
+<span>{{ rows|length }} components &times; {{ cases|length }} gases</span>
+<span>Test points: <b>{{ num_test_points }}</b></span>
+<span>v0.3.31</span>
+{% endblock %}
+
+{% block extra_js %}
+/* Segmented controls */
+document.querySelectorAll('.seg button').forEach(b => {
+  b.addEventListener('click', () => {
+    b.parentElement.querySelectorAll('button').forEach(s => s.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true');
+  });
+});
+
+/* ============================= EDITABLE GAS TABLE ============================= */
+(function() {
+  const table = document.getElementById('gasTable');
+  if (!table) return;
+
+  const inputs = [...table.querySelectorAll('.cell-num-input')];
+  const rowCount = 1 + Math.max(0, ...inputs.map(i => +i.dataset.row));
+  const caseCount = 1 + Math.max(0, ...inputs.map(i => +i.dataset.case));
+
+  function cellAt(row, caseIdx) {
+    return table.querySelector(`.cell-num-input[data-row="${row}"][data-case="${caseIdx}"]`);
+  }
+  function parseVal(inp) {
+    const v = parseFloat(inp.value.replace(',', '.'));
+    return isFinite(v) ? v : 0;
+  }
+  function fmt(v) { return v.toFixed(3); }
+
+  function recalcRow(row) {
+    const rowValues = [];
+    for (let c = 0; c < caseCount; c++) rowValues.push(parseVal(cellAt(row, c)));
+    const rowMax = Math.max(...rowValues);
+    for (let c = 0; c < caseCount; c++) {
+      const inp = cellAt(row, c);
+      const v = rowValues[c];
+      const bar = rowMax > 0 ? (v / rowMax) * 0.65 : 0;
+      inp.parentElement.style.setProperty('--bar', bar.toFixed(2));
+      inp.classList.toggle('zero', v === 0);
+      inp.classList.toggle('dominant', v > 40);
+    }
+  }
+
+  function recalcTotal(caseIdx) {
+    let sum = 0;
+    for (let r = 0; r < rowCount; r++) sum += parseVal(cellAt(r, caseIdx));
+    const totalEl = table.querySelector(`.total-cell[data-case="${caseIdx}"]`);
+    if (totalEl) {
+      totalEl.textContent = fmt(sum);
+      const ok = Math.abs(sum - 100) < 0.5 || sum === 0;
+      totalEl.classList.toggle('bad', !ok);
+    }
+  }
+
+  function recalcAll() {
+    for (let r = 0; r < rowCount; r++) recalcRow(r);
+    for (let c = 0; c < caseCount; c++) recalcTotal(c);
+  }
+
+  inputs.forEach(inp => {
+    inp.addEventListener('input', () => {
+      recalcRow(+inp.dataset.row);
+      recalcTotal(+inp.dataset.case);
+    });
+    inp.addEventListener('blur', () => {
+      const v = parseVal(inp);
+      inp.value = fmt(v);
+    });
+    inp.addEventListener('focus', () => inp.select());
+  });
+
+  /* Normalize button: scales each case column to sum to 100 */
+  const normalizeBtn = table.closest('.section').querySelector('header .actions .btn.ghost');
+  if (normalizeBtn && normalizeBtn.textContent.trim().startsWith('Normalize')) {
+    normalizeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      for (let c = 0; c < caseCount; c++) {
+        let sum = 0;
+        for (let r = 0; r < rowCount; r++) sum += parseVal(cellAt(r, c));
+        if (sum > 0 && Math.abs(sum - 100) > 0.001) {
+          for (let r = 0; r < rowCount; r++) {
+            const inp = cellAt(r, c);
+            inp.value = fmt(parseVal(inp) * 100 / sum);
+          }
+        }
+      }
+      recalcAll();
+    });
+  }
+})();
+{% endblock %}

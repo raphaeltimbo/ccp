@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}Performance Evaluation{% endblock %}
+
+{% block nav_perf %}active{% endblock %}
+
+{% block breadcrumbs %}
+<span>Workspace</span>
+<span class="sep">&rsaquo;</span>
+<span>Station K-401</span>
+<span class="sep">&rsaquo;</span>
+<b>Performance Evaluation</b>
+{% endblock %}
+
+{% block top_right %}
+<div class="seg" role="tablist" aria-label="Data source">
+  <button data-src="mock" aria-pressed="true" title="Use test fixtures">Mock</button>
+  <button data-src="pi" title="Live PI historian">PI Live</button>
+  <button data-src="file" title="Imported file">File</button>
+</div>
+<button class="btn primary" id="runBtn" title="Run evaluation (Ctrl+Enter)">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+  Run evaluation
+  <span class="kbd" style="border-color: oklch(60% 0.02 80); color: oklch(85% 0.02 80);">Ctrl+&crarr;</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="title">Performance evaluation</h1>
+    <p>Evaluate measured operating points against the machine&rsquo;s design curves. Compare up to six gas cases side-by-side.</p>
+  </div>
+  <div class="meta">
+    <div><b>K-401A</b> &middot; 2-stage straight-through</div>
+    <div>Last run <b id="lastRun">&mdash;</b></div>
+    <div>EOS <b>Peng-Robinson</b></div>
+  </div>
+</div>
+
+<!-- STEP RAIL -->
+<div class="steps" role="tablist">
+  <div class="step done" data-step="1">
+    <div class="num"><span>1</span></div>
+    <div><div class="label">Machine</div><div class="hint">K-401A selected</div></div>
+  </div>
+  <div class="step done" data-step="2">
+    <div class="num"><span>2</span></div>
+    <div><div class="label">Design curves</div><div class="hint">3 curves loaded</div></div>
+  </div>
+  <div class="step" aria-current="true" data-step="3">
+    <div class="num"><span>3</span></div>
+    <div><div class="label">Gas &amp; conditions</div><div class="hint">{{ cases|length }} cases</div></div>
+  </div>
+  <div class="step" data-step="4">
+    <div class="num"><span>4</span></div>
+    <div><div class="label">Run</div><div class="hint">polytropic</div></div>
+  </div>
+  <div class="step" data-step="5">
+    <div class="num"><span>5</span></div>
+    <div><div class="label">Report</div><div class="hint">export</div></div>
+  </div>
+</div>
+
+<!-- BANNER -->
+<div class="banner" id="banner" x-data="{ show: true }" x-show="show">
+  <span class="tag">Mock</span>
+  <div>
+    Running with <b>mock data</b> from test fixtures. Switch to <b>PI Live</b> in the top bar to pull real historian tags.
+  </div>
+  <div class="actions">
+    <button class="btn ghost">Learn more</button>
+    <button class="btn ghost icon" @click="show = false" title="Dismiss">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M6 18L18 6"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- GAS SELECTION -->
+<section class="section" id="secGas" x-data="{ collapsed: false }">
+  <header @click.self="collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Gas selection</h2>
+    <span class="desc">Mole-% composition per case</span>
+    <div class="actions">
+      <span style="font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);">{{ cases|length }} cases &middot; {{ rows|length }} components</span>
+      <button class="btn ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M12 3v18"/></svg>Normalize
+      </button>
+      <button class="btn ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 14v5h16v-5"/><path d="M12 4v12"/><path d="m8 10 4 4 4-4"/></svg>Import
+      </button>
+      <button class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Add case
+      </button>
+    </div>
+  </header>
+  <div class="body" x-show="!collapsed" x-collapse>
+    <div class="gas-wrap">
+      <table class="gas">
+        <colgroup>
+          <col style="width: 180px;">
+          {% for case in cases %}<col style="width: 140px;">{% endfor %}
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="sticky" style="text-align:left;">
+              <span style="font-family: var(--font-mono); color: var(--ink-4); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;">Component</span>
+            </th>
+            {% for case in cases %}
+            <th>
+              <span class="case-name" style="--case-color: oklch(62% 0.14 {{ case.hue }});">{{ case.name }}</span>
+            </th>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th class="sticky unit" style="text-align:left;">mol %</th>
+            {% for case in cases %}<th class="unit">mol %</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="sticky component">{{ row.component.key }}<span class="formula">{{ row.component.formula }}</span></td>
+            {% for cell in row.cells %}
+            <td>
+              <span class="cell-num{% if cell.is_zero %} zero{% endif %}{% if cell.is_dominant %} dominant{% endif %}" style="--bar:{{ cell.bar }};">{{ cell.value }}</span>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          <tr class="total">
+            <td class="sticky">&Sigma; total</td>
+            {% for total in totals %}
+            <td>
+              <span class="cell-num" style="color: {% if total.ok %}var(--ink){% else %}var(--danger){% endif %};">{{ total.value }}</span>
+            </td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- OPERATING CONDITIONS -->
+<section class="section" x-data="{ collapsed: false }">
+  <header @click.self="collapsed = !collapsed">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
+    <h2>Operating conditions</h2>
+    <span class="desc">Case A &middot; suction &amp; discharge</span>
+    <div class="actions">
+      <div class="seg">
+        <button aria-pressed="true">Case A</button>
+        <button>B</button><button>C</button><button>D</button>
+      </div>
+    </div>
+  </header>
+  <div class="body cond" x-show="!collapsed" x-collapse>
+    {% for cond in conditions %}
+    <div class="field" x-data="{ focused: false }" :class="focused && 'focus'">
+      <label>{{ cond.group }} &middot; {{ cond.label }}</label>
+      <div class="val">
+        <input value="{{ cond.value }}" spellcheck="false" @focus="focused = true" @blur="focused = false" />
+        <span class="u">{{ cond.unit }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<div style="height: 24px;"></div>
+{% endblock %}
+
+{% block inspector %}
+<aside class="insp" aria-label="Run inspector">
+  <div class="blk">
+    <h3>Selected case</h3>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+      <div style="width:10px;height:10px;border-radius:50%;background: oklch(62% 0.14 255);"></div>
+      <div style="font-family: var(--font-mono); font-weight:600;">case_a</div>
+      <div style="margin-left:auto; font-size: 11px; color: var(--ink-3); font-family: var(--font-mono);">&Sigma; 100.00%</div>
+    </div>
+    <div class="kv"><span class="k">Dominant</span><span class="v">Methane 83.94%</span></div>
+    <div class="kv"><span class="k">Molecular weight</span><span class="v">18.92 kg/kmol</span></div>
+    <div class="kv"><span class="k">Specific gravity</span><span class="v">0.6534</span></div>
+    <div class="kv"><span class="k">Pseudo-critical T</span><span class="v">207.1 K</span></div>
+    <div class="kv"><span class="k">Pseudo-critical P</span><span class="v">46.20 bar</span></div>
+  </div>
+
+  <div class="blk">
+    <h3>Design curve &middot; stage 1</h3>
+    <div class="chart">
+      <svg viewBox="0 0 320 140" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g stroke="var(--rule-soft)" stroke-width="1">
+          <line x1="0" y1="35" x2="320" y2="35"/>
+          <line x1="0" y1="70" x2="320" y2="70"/>
+          <line x1="0" y1="105" x2="320" y2="105"/>
+          <line x1="80"  y1="0" x2="80"  y2="140"/>
+          <line x1="160" y1="0" x2="160" y2="140"/>
+          <line x1="240" y1="0" x2="240" y2="140"/>
+        </g>
+        <path d="M10 110 C 60 80, 120 60, 180 55 S 280 80, 310 120" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <path d="M10 110 C 60 80, 120 60, 180 55 S 280 80, 310 120 L 310 140 L 10 140 Z" fill="url(#g1)"/>
+        <path d="M10 100 C 80 40, 160 30, 240 50 S 300 100, 310 115" fill="none" stroke="var(--ink-3)" stroke-width="1.3" stroke-dasharray="3 3"/>
+        <g>
+          <line x1="170" y1="58" x2="170" y2="140" stroke="var(--ink-4)" stroke-width="1" stroke-dasharray="2 3"/>
+          <circle cx="170" cy="58" r="5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>
+        </g>
+        <text x="176" y="50" font-family="var(--font-mono)" font-size="9" fill="var(--ink-2)">op pt</text>
+      </svg>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px; font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-4);">
+      <span>Q / Q<sub>design</sub></span>
+      <span>H<sub>poly</sub></span>
+    </div>
+  </div>
+
+  <div class="blk">
+    <h3>Pipeline</h3>
+    <div class="timeline">
+      <div class="tl done">
+        <div class="pt"></div>
+        <div><div class="t">Machine loaded</div><div class="d">K-401A &middot; 2 stages &middot; PR EOS</div><div class="at">12:04:02</div></div>
+      </div>
+      <div class="tl done">
+        <div class="pt"></div>
+        <div><div class="t">Design curves parsed</div><div class="d">3 speeds &middot; 18 points</div><div class="at">12:04:03</div></div>
+      </div>
+      <div class="tl active">
+        <div class="pt"></div>
+        <div><div class="t">Gas composition</div><div class="d">Awaiting input &middot; {{ cases|length }} cases</div><div class="at">just now</div></div>
+      </div>
+      <div class="tl">
+        <div class="pt"></div>
+        <div><div class="t">Evaluate</div><div class="d">Compute polytropic head &amp; efficiency</div><div class="at">&mdash;</div></div>
+      </div>
+      <div class="tl">
+        <div class="pt"></div>
+        <div><div class="t">Report</div><div class="d">PDF &middot; CSV &middot; shareable link</div><div class="at">&mdash;</div></div>
+      </div>
+    </div>
+  </div>
+</aside>
+{% endblock %}
+
+{% block status %}
+<span class="chip"><span class="dot"></span> <b>Ready</b></span>
+<span>EOS: <b>Peng-Robinson</b></span>
+<span>Units: <b>SI</b></span>
+<span class="chip warn"><span class="dot"></span> <b>Mock</b> data source</span>
+<span class="spacer"></span>
+<span>{{ rows|length }} components &times; {{ cases|length }} cases</span>
+<span>v0.3.31</span>
+{% endblock %}
+
+{% block extra_js %}
+/* Segmented controls */
+document.querySelectorAll('.seg button').forEach(b => {
+  b.addEventListener('click', () => {
+    b.parentElement.querySelectorAll('button').forEach(s => s.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true');
+  });
+});
+
+/* Run button simulation */
+const runBtn = document.getElementById('runBtn');
+if (runBtn) {
+  function doRun() {
+    runBtn.disabled = true;
+    runBtn.classList.add('run-progress');
+    runBtn.style.setProperty('--progress','0%');
+    const steps = document.querySelectorAll('.step');
+    steps[2].classList.add('done'); steps[2].removeAttribute('aria-current');
+    steps[3].setAttribute('aria-current', 'true');
+    runBtn.innerHTML = '<span class="spin"></span> Running\u2026';
+    let p = 0;
+    const tick = setInterval(() => {
+      p += 8 + Math.random()*6;
+      if (p >= 100) p = 100;
+      runBtn.style.setProperty('--progress', p + '%');
+      if (p >= 100){ clearInterval(tick); finishRun(); }
+    }, 150);
+  }
+
+  function finishRun() {
+    setTimeout(() => {
+      runBtn.disabled = false;
+      runBtn.classList.remove('run-progress');
+      runBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Run evaluation <span class="kbd" style="border-color: oklch(60% 0.02 80); color: oklch(85% 0.02 80);">Ctrl+\u21b5</span>';
+      const steps = document.querySelectorAll('.step');
+      steps[3].classList.add('done'); steps[3].removeAttribute('aria-current');
+      steps[4].setAttribute('aria-current','true');
+      const now = new Date();
+      document.getElementById('lastRun').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }, 200);
+  }
+
+  runBtn.addEventListener('click', doRun);
+  window.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter'){ e.preventDefault(); runBtn.click(); }
+  });
+}
+{% endblock %}

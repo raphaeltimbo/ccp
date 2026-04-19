@@ -1,0 +1,13 @@
+{
+  "name": "ccp-desktop",
+  "version": "0.1.0",
+  "description": "CCP — Centrifugal Compressor Performance",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

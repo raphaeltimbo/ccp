@@ -1,0 +1,226 @@
+{% load static %}<!doctype html>
+<html lang="en" data-mode="light" data-type="geist" data-density="comfortable">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{% block title %}CCP{% endblock %} — Centrifugal Compressor Performance</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+
+<link rel="stylesheet" href="{% static 'css/app.css' %}?v={% now 'U' %}">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- TOP BAR -->
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="16" cy="16" r="13"/>
+        <circle cx="16" cy="16" r="3.2" fill="currentColor" stroke="none"/>
+        <path d="M16 7 q3 5 0 9"/>
+        <path d="M23.5 12 q-5 2 -7.5 4"/>
+        <path d="M23.5 20 q-5 -2 -7.5 -4"/>
+        <path d="M16 25 q-3 -5 0 -9"/>
+        <path d="M8.5 20 q5 -2 7.5 -4"/>
+        <path d="M8.5 12 q5 2 7.5 4"/>
+      </svg>
+      CCP
+      <span class="sub">v0.3</span>
+    </div>
+
+    <nav class="crumbs" aria-label="Breadcrumb">
+      {% block breadcrumbs %}
+      <span>Workspace</span>
+      <span class="sep">&rsaquo;</span>
+      <b>Dashboard</b>
+      {% endblock %}
+    </nav>
+
+    <div class="top-right">
+      {% block top_right %}{% endblock %}
+      <button class="btn ghost icon" title="Search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <button class="btn ghost icon" id="themeBtn" title="Toggle theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 1 1 9.5 4 7 7 0 0 0 20 14.5Z"/></svg>
+      </button>
+      <button class="btn" id="tweaksBtn" title="Open tweaks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r="2"/><path d="M4 17h2"/><path d="M10 17h10"/><circle cx="8" cy="17" r="2"/></svg>
+        Tweaks
+      </button>
+    </div>
+  </header>
+
+  <!-- LEFT NAV -->
+  <aside class="nav" aria-label="Main navigation">
+    <div class="group-label">Analysis</div>
+    <a href="#">
+      <span class="dot"></span> Dashboard <span class="count">&mdash;</span>
+    </a>
+    <a href="{% url 'evaluation:straight_through' %}" class="{% block nav_st %}{% endblock %}">
+      <span class="dot"></span> Straight-through <span class="count">3</span>
+    </a>
+    <a href="#">
+      <span class="dot"></span> Back-to-back <span class="count">1</span>
+    </a>
+    <a href="#">
+      <span class="dot"></span> Curves conversion <span class="count">&mdash;</span>
+    </a>
+    <a href="{% url 'evaluation:performance' %}" class="{% block nav_perf %}{% endblock %}">
+      <span class="dot"></span> Performance evaluation <span class="count">live</span>
+    </a>
+
+    <div class="group-label">Library</div>
+    <a href="#"><span class="dot"></span> Gas mixtures <span class="count">24</span></a>
+    <a href="#"><span class="dot"></span> Machines <span class="count">11</span></a>
+    <a href="#"><span class="dot"></span> Reports <span class="count">58</span></a>
+
+    <div class="group-label">Settings</div>
+    <a href="#"><span class="dot"></span> Units <span class="count">SI</span></a>
+    <a href="#"><span class="dot"></span> Equation of state <span class="count">PR</span></a>
+
+    <div class="unit">
+      <div class="swatch">K4</div>
+      <div>
+        <div style="color:var(--ink); font-weight:500;">K-401A</div>
+        <div style="font-family: var(--font-mono); font-size: 10.5px;">Train K-401 &middot; 2 stages</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <section class="main" id="main">
+    {% block content %}{% endblock %}
+  </section>
+
+  <!-- INSPECTOR -->
+  {% block inspector %}{% endblock %}
+
+  <!-- STATUS -->
+  <footer class="status">
+    {% block status %}
+    <span class="chip"><span class="dot"></span> <b>Ready</b></span>
+    <span class="spacer"></span>
+    <span>v0.3.31</span>
+    {% endblock %}
+  </footer>
+
+</div>
+
+<!-- TWEAKS PANEL -->
+<div class="tweaks" id="tweaks" x-data="{ open: false }" x-show="open" @tweaks-toggle.window="open = !open" x-cloak>
+  <h4>Tweaks <span class="close" @click="open = false">&times;</span></h4>
+  <div class="tw-row">
+    <label>Mode</label>
+    <div class="opts" data-key="mode">
+      <button data-v="light" aria-pressed="true">Light</button>
+      <button data-v="dark">Dark</button>
+    </div>
+  </div>
+  <div class="tw-row">
+    <label>Palette</label>
+    <div class="swatches" data-key="palette">
+      <button data-v="graphite" title="Graphite" style="background: oklch(55% 0.02 260);"></button>
+      <button data-v="indigo"   title="Indigo"   style="background: oklch(55% 0.14 258);" aria-pressed="true"></button>
+      <button data-v="teal"     title="Teal"     style="background: oklch(60% 0.11 186);"></button>
+      <button data-v="amber"    title="Amber"    style="background: oklch(68% 0.14 65);"></button>
+      <button data-v="rose"     title="Rose"     style="background: oklch(58% 0.17 15);"></button>
+      <button data-v="moss"     title="Moss"     style="background: oklch(55% 0.09 145);"></button>
+    </div>
+  </div>
+  <div class="tw-row">
+    <label>Type</label>
+    <div class="opts" data-key="typeface">
+      <button data-v="geist" aria-pressed="true">Geist</button>
+      <button data-v="plex">IBM Plex</button>
+      <button data-v="editorial">Editorial</button>
+    </div>
+  </div>
+  <div class="tw-row">
+    <label>Density</label>
+    <div class="opts" data-key="density">
+      <button data-v="compact">Compact</button>
+      <button data-v="comfortable" aria-pressed="true">Comfortable</button>
+      <button data-v="spacious">Spacious</button>
+    </div>
+  </div>
+  <div class="tw-row">
+    <label>Hue</label>
+    <div style="display:flex; align-items:center; gap:8px; width:100%;">
+      <input type="range" min="0" max="360" step="1" id="hueSlider" value="258" style="flex:1;">
+      <span id="hueVal" style="font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); width: 36px; text-align:right;">258&deg;</span>
+    </div>
+  </div>
+</div>
+
+<script>
+{% block extra_js %}{% endblock %}
+
+/* ===== TWEAKS ENGINE ===== */
+const PALETTES = {
+  graphite: { hue: 260, chroma: 0.02 },
+  indigo:   { hue: 258, chroma: 0.14 },
+  teal:     { hue: 186, chroma: 0.11 },
+  amber:    { hue: 65,  chroma: 0.14 },
+  rose:     { hue: 15,  chroma: 0.17 },
+  moss:     { hue: 145, chroma: 0.09 },
+};
+
+const tweakState = JSON.parse(localStorage.getItem('ccp-tweaks') || '{"palette":"indigo","mode":"light","typeface":"geist","density":"comfortable","accentHue":258}');
+
+function applyTweaks() {
+  const html = document.documentElement;
+  html.setAttribute('data-mode', tweakState.mode);
+  html.setAttribute('data-type', tweakState.typeface);
+  html.setAttribute('data-density', tweakState.density);
+  const p = PALETTES[tweakState.palette] || PALETTES.indigo;
+  const hue = tweakState.accentHue ?? p.hue;
+  const c = p.chroma;
+  html.style.setProperty('--hue', hue);
+  const isDark = tweakState.mode === 'dark';
+  html.style.setProperty('--accent', `oklch(${isDark ? 68 : 52}% ${c} ${hue})`);
+  html.style.setProperty('--accent-2', `oklch(${isDark ? 30 : 94}% ${Math.min(c * 0.5, 0.05)} ${hue})`);
+  html.style.setProperty('--accent-ink', `oklch(${isDark ? 92 : 30}% ${c} ${hue})`);
+
+  document.querySelectorAll('.tweaks [data-key]').forEach(group => {
+    const k = group.dataset.key;
+    group.querySelectorAll('button').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.v === tweakState[k]));
+    });
+  });
+  const slider = document.getElementById('hueSlider');
+  if (slider) { slider.value = hue; }
+  const hueVal = document.getElementById('hueVal');
+  if (hueVal) { hueVal.textContent = hue + '\u00b0'; }
+  localStorage.setItem('ccp-tweaks', JSON.stringify(tweakState));
+}
+applyTweaks();
+
+document.querySelectorAll('.tweaks [data-key]').forEach(group => {
+  group.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    tweakState[group.dataset.key] = b.dataset.v;
+    if (group.dataset.key === 'palette') tweakState.accentHue = PALETTES[b.dataset.v].hue;
+    applyTweaks();
+  });
+});
+document.getElementById('hueSlider')?.addEventListener('input', e => {
+  tweakState.accentHue = Number(e.target.value);
+  applyTweaks();
+});
+document.getElementById('themeBtn')?.addEventListener('click', () => {
+  tweakState.mode = tweakState.mode === 'dark' ? 'light' : 'dark';
+  applyTweaks();
+});
+document.getElementById('tweaksBtn')?.addEventListener('click', () => {
+  window.dispatchEvent(new CustomEvent('tweaks-toggle'));
+});
+</script>
+</body>
+</html>
