@@ -1,12 +1,16 @@
 import io
 import json
+import logging
 import re
+import traceback
 import zipfile
 from datetime import datetime, timezone
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
+
+logger = logging.getLogger(__name__)
 
 CCP_DESKTOP_FORMAT_VERSION = "0.1"
 
@@ -411,3 +415,282 @@ def straight_through(request):
         "polytropic_methods": POLYTROPIC_METHODS,
         "flow_v_units": FLOW_V_UNITS,
     })
+
+
+def _q(value, unit):
+    """Build a pint Quantity from a possibly-blank string; return None if blank."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(str(value).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _gas_composition_from_case(case, components):
+    values = case.get("values") or []
+    return {
+        comp: float(v)
+        for comp, v in zip(components, values)
+        if isinstance(v, (int, float)) and v > 0
+    }
+
+
+def _flow_kwarg(unit_str):
+    """Return 'flow_m' or 'flow_v' based on whether the unit is mass or volume flow."""
+    from ccp import Q_
+
+    dim = Q_(1, unit_str).dimensionality
+    mass_dim = Q_(1, "kg/s").dimensionality
+    return "flow_m" if dim == mass_dim else "flow_v"
+
+
+@require_POST
+def calculate_straight_through(request):
+    try:
+        from ccp import Q_, State, ureg
+        from ccp.compressor import Point1Sec, StraightThrough
+        from ccp.point import Point
+    except ImportError as e:
+        return JsonResponse(
+            {"error": f"ccp library is not available in this environment: {e}"},
+            status=500,
+        )
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "invalid JSON body"}, status=400)
+
+    form = payload.get("form") or {}
+
+    # Register `barg` against the user-selected ambient pressure, mirroring the
+    # Streamlit page (ccp/app/pages/1_straight_through.py:161). Safe to re-run:
+    # if the definition changes we update it in-place.
+    try:
+        amb_mag = float(str(form.get("ambient_pressure") or 1.01325).replace(",", "."))
+    except ValueError:
+        amb_mag = 1.01325
+    amb_unit = form.get("ambient_pressure_unit") or "bar"
+    try:
+        ambient_bar = Q_(amb_mag, amb_unit).to("bar").magnitude
+    except Exception:
+        ambient_bar = 1.01325
+    try:
+        ureg.define(f"barg = 1 * bar; offset: {ambient_bar}")
+    except Exception:
+        # pint raises if already defined with a different offset; redefine via remove.
+        try:
+            del ureg._units["barg"]
+        except Exception:
+            pass
+        ureg.define(f"barg = 1 * bar; offset: {ambient_bar}")
+    gas_composition = payload.get("gas_composition") or {}
+    cases = gas_composition.get("cases") or []
+    components = (
+        gas_composition.get("components")
+        or [c["key"] for c in COMPONENTS]
+    )
+    cases_by_name = {
+        c.get("name"): _gas_composition_from_case(c, components) for c in cases
+    }
+
+    def fluid_for(gas_name, context):
+        comp = cases_by_name.get(gas_name)
+        if not comp:
+            raise ValueError(
+                f"{context}: gas '{gas_name}' is empty or not defined"
+            )
+        return comp
+
+    def q(value_key, unit_key, default_unit=None, required=False, context=""):
+        raw = form.get(value_key)
+        unit = form.get(unit_key) or default_unit
+        parsed = _q(raw, unit)
+        if parsed is None:
+            if required:
+                raise ValueError(f"{context}: missing value for {value_key}")
+            return None
+        if unit is None:
+            raise ValueError(f"{context}: missing unit for {unit_key}")
+        return Q_(parsed, unit)
+
+    try:
+        # --- Guarantee point ---
+        g_fluid = fluid_for(form.get("gas_point_guarantee"), "guarantee point")
+        flow_unit_g = form.get("flow_units_guarantee") or "kg/h"
+        flow_kw_g = _flow_kwarg(flow_unit_g)
+        flow_g = q("flow_guarantee", "flow_units_guarantee",
+                   default_unit="kg/h", required=True, context="guarantee point")
+
+        suc_g = State(
+            p=q("suction_pressure_guarantee", "suction_pressure_units_guarantee",
+                default_unit="bar", required=True, context="guarantee point"),
+            T=q("suction_temperature_guarantee",
+                "suction_temperature_units_guarantee",
+                default_unit="degK", required=True, context="guarantee point"),
+            fluid=g_fluid,
+        )
+        disch_g = State(
+            p=q("discharge_pressure_guarantee",
+                "discharge_pressure_units_guarantee",
+                default_unit="bar", required=True, context="guarantee point"),
+            T=q("discharge_temperature_guarantee",
+                "discharge_temperature_units_guarantee",
+                default_unit="degK", required=True, context="guarantee point"),
+            fluid=g_fluid,
+        )
+        speed_g = q("speed_guarantee", "speed_units_guarantee",
+                    default_unit="rpm", required=True, context="guarantee point")
+        b_g = q("b_guarantee", "b_units_guarantee",
+                default_unit="m", required=True, context="guarantee point")
+        D_g = q("D_guarantee", "D_units_guarantee",
+                default_unit="m", required=True, context="guarantee point")
+
+        guarantee_point = Point(
+            suc=suc_g,
+            disch=disch_g,
+            speed=speed_g,
+            b=b_g,
+            D=D_g,
+            power_losses=Q_(0, "W"),
+            **{flow_kw_g: flow_g},
+        )
+    except Exception as e:
+        logger.exception("Guarantee-point build failed")
+        return JsonResponse(
+            {"error": f"Failed to build guarantee point: {e}"}, status=400
+        )
+
+    # --- Test points ---
+    test_points = []
+    skipped = []
+    try:
+        flow_unit_t = form.get("flow_units") or "kg/s"
+        flow_kw_t = _flow_kwarg(flow_unit_t)
+
+        for i in range(1, NUM_TEST_POINTS + 1):
+            fp = form.get(f"flow_point_{i}")
+            sp = form.get(f"suction_pressure_point_{i}")
+            stp = form.get(f"suction_temperature_point_{i}")
+            if not fp or not sp or not stp:
+                skipped.append(i)
+                continue
+
+            p_fluid = fluid_for(form.get(f"gas_point_{i}"), f"test point {i}")
+            point_suc = State(
+                p=q(f"suction_pressure_point_{i}", "suction_pressure_units",
+                    default_unit="bar", required=True,
+                    context=f"test point {i}"),
+                T=q(f"suction_temperature_point_{i}", "suction_temperature_units",
+                    default_unit="degK", required=True,
+                    context=f"test point {i}"),
+                fluid=p_fluid,
+            )
+            point_disch = State(
+                p=q(f"discharge_pressure_point_{i}", "discharge_pressure_units",
+                    default_unit="bar", required=True,
+                    context=f"test point {i}"),
+                T=q(f"discharge_temperature_point_{i}",
+                    "discharge_temperature_units",
+                    default_unit="degK", required=True,
+                    context=f"test point {i}"),
+                fluid=p_fluid,
+            )
+            flow_val = q(f"flow_point_{i}", "flow_units",
+                         default_unit="kg/s", required=True,
+                         context=f"test point {i}")
+            speed_val = q(f"speed_point_{i}", "speed_units",
+                          default_unit="rpm", required=True,
+                          context=f"test point {i}")
+
+            test_points.append(
+                Point1Sec(
+                    suc=point_suc,
+                    disch=point_disch,
+                    speed=speed_val,
+                    b=b_g,
+                    D=D_g,
+                    casing_area=0,
+                    casing_temperature=0,
+                    ambient_temperature=0,
+                    **{flow_kw_t: flow_val},
+                )
+            )
+    except Exception as e:
+        logger.exception("Test-point build failed")
+        return JsonResponse(
+            {"error": f"Failed to build test points: {e}", "skipped": skipped},
+            status=400,
+        )
+
+    if not test_points:
+        return JsonResponse(
+            {
+                "error": (
+                    "No complete test points — each point needs flow, suction "
+                    "pressure, and suction temperature filled."
+                ),
+                "skipped": skipped,
+            },
+            status=400,
+        )
+
+    reynolds_correction = bool(form.get("reynolds_correction", False))
+    try:
+        st_obj = StraightThrough(
+            guarantee_point=guarantee_point,
+            test_points=test_points,
+            reynolds_correction=reynolds_correction,
+            bearing_mechanical_losses=False,
+        )
+    except Exception as e:
+        logger.exception("StraightThrough construction failed")
+        return JsonResponse(
+            {
+                "error": f"StraightThrough construction failed: {e}",
+                "trace": traceback.format_exc() if request.GET.get("debug") else None,
+            },
+            status=400,
+        )
+
+    def extract(point, idx):
+        def _f(attr, to_unit=None):
+            val = getattr(point, attr, None)
+            if val is None:
+                return None
+            try:
+                return float(val.to(to_unit).m if to_unit else val.m)
+            except Exception:
+                return None
+
+        try:
+            suc_p = point.suc.p().to("bar").m
+            disch_p = point.disch.p().to("bar").m
+            return {
+                "point": idx,
+                "flow_m_kgs": _f("flow_m", "kg/s"),
+                "phi": _f("phi"),
+                "pressure_ratio": disch_p / suc_p if suc_p else None,
+                "head_kJkg": _f("head", "kJ/kg"),
+                "eff": _f("eff"),
+                "power_kW": _f("power", "kW"),
+                "speed_rpm": _f("speed", "rpm"),
+                "suc_p_bar": suc_p,
+                "suc_T_degC": point.suc.T().to("degC").m,
+                "disch_p_bar": disch_p,
+                "disch_T_degC": point.disch.T().to("degC").m,
+            }
+        except Exception as e:
+            return {"point": idx, "error": str(e)}
+
+    return JsonResponse(
+        {
+            "speed_operational_rpm": float(st_obj.speed_operational.to("rpm").m),
+            "test_point_count": len(test_points),
+            "skipped_points": skipped,
+            "reynolds_correction": reynolds_correction,
+            "test_flange_points": [extract(p, i + 1) for i, p in enumerate(st_obj.points_flange_t)],
+            "converted_points": [extract(p, i + 1) for i, p in enumerate(st_obj.points_flange_sp)],
+        }
+    )

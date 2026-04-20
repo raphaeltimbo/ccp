@@ -7,7 +7,11 @@ dependencies = [
     "django>=5.0",
     "django-htmx>=1.17",
     "whitenoise>=6.5",
+    "ccp-performance",
 ]
+
+[tool.uv.sources]
+ccp-performance = { path = "..", editable = true }
 
 [build-system]
 requires = ["hatchling"]

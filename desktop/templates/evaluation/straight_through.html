@@ -392,7 +392,7 @@
 </section>
 
 <!-- RESULTS (shown after calculation) -->
-<section class="section" id="resultsSection" x-data="{ collapsed: true }" style="display:none;">
+<section class="section" id="resultsSection" x-data="{ collapsed: false }" style="display:none;">
   <header @click="if (!$event.target.closest('.actions')) collapsed = !collapsed">
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" class="chev" :style="collapsed && 'transform: rotate(-90deg)'"><path d="M6 9l6 6 6-6"/></svg>
     <h2>Results</h2>
@@ -477,6 +477,112 @@ document.querySelectorAll('.seg button').forEach(b => {
     b.setAttribute('aria-pressed','true');
   });
 });
+
+/* ============================= CALCULATE BUTTON ============================= */
+(function () {
+  const runBtn = document.getElementById('runBtn');
+  if (!runBtn) return;
+
+  const resultsSection = document.getElementById('resultsSection');
+  const resultsContent = document.getElementById('resultsContent');
+  const lastRun = document.getElementById('lastRun');
+  const origLabel = runBtn.innerHTML;
+
+  const fmt = (v, d = 3) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+
+  function renderTable(title, points) {
+    if (!points || points.length === 0) return '';
+    const rows = points.map(p => {
+      if (p.error) {
+        return `<tr><td>${p.point}</td><td colspan="9" style="color: var(--danger);">${p.error}</td></tr>`;
+      }
+      return `<tr>
+        <td>${p.point}</td>
+        <td>${fmt(p.flow_m_kgs, 3)}</td>
+        <td>${fmt(p.phi, 4)}</td>
+        <td>${fmt(p.pressure_ratio, 3)}</td>
+        <td>${fmt(p.head_kJkg, 2)}</td>
+        <td>${fmt(p.eff * 100, 2)}</td>
+        <td>${fmt(p.power_kW, 1)}</td>
+        <td>${fmt(p.speed_rpm, 0)}</td>
+        <td>${fmt(p.suc_p_bar, 3)} / ${fmt(p.suc_T_degC, 1)}</td>
+        <td>${fmt(p.disch_p_bar, 3)} / ${fmt(p.disch_T_degC, 1)}</td>
+      </tr>`;
+    }).join('');
+    return `<h3 style="margin-top:18px;">${title}</h3>
+      <table class="test-table" style="margin-top:8px;">
+        <thead><tr>
+          <th>#</th><th>ṁ (kg/s)</th><th>φ</th><th>p₂/p₁</th>
+          <th>Head (kJ/kg)</th><th>η (%)</th><th>Power (kW)</th><th>Speed (rpm)</th>
+          <th>Suction p/T (bar / °C)</th><th>Discharge p/T (bar / °C)</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function showResults(data) {
+    const skipped = (data.skipped_points || []).length
+      ? ` (skipped points: ${data.skipped_points.join(', ')})`
+      : '';
+    const info = `
+      <div style="display:flex; gap:24px; margin-bottom: 16px; color: var(--ink-2); font-family: var(--font-mono); font-size: 12px;">
+        <span>Operational speed: <b>${fmt(data.speed_operational_rpm, 0)} rpm</b></span>
+        <span>Test points: <b>${data.test_point_count}</b>${skipped}</span>
+        <span>Reynolds correction: <b>${data.reynolds_correction ? 'on' : 'off'}</b></span>
+      </div>`;
+    resultsContent.innerHTML = info
+      + renderTable('Test flange (as-tested)', data.test_flange_points)
+      + renderTable('Converted to operational speed', data.converted_points);
+
+    resultsSection.style.display = '';
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (lastRun) {
+      const now = new Date();
+      lastRun.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+
+  function showError(message, detail) {
+    resultsContent.innerHTML = `
+      <div style="padding: 16px; border: 1px solid var(--danger); border-radius: 8px; background: oklch(96% 0.03 15); color: var(--ink-1);">
+        <div style="font-weight: 600; margin-bottom: 6px;">Calculation failed</div>
+        <div style="font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap;">${message}</div>
+        ${detail ? `<details style="margin-top:8px;"><summary style="cursor:pointer; font-size:12px;">Detail</summary><pre style="font-size:11px;">${detail}</pre></details>` : ''}
+      </div>`;
+    resultsSection.style.display = '';
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function doCalculate() {
+    const state = window.CCP?.collectState?.();
+    if (!state) { showError('CCP state API not available on this page.'); return; }
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<span class="spin"></span> Calculating…';
+    try {
+      const resp = await fetch('/calculate/straight-through/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      });
+      const data = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+      if (!resp.ok) {
+        showError(data.error || `HTTP ${resp.status}`, data.trace || data.point || null);
+        return;
+      }
+      showResults(data);
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      runBtn.disabled = false;
+      runBtn.innerHTML = origLabel;
+    }
+  }
+
+  runBtn.addEventListener('click', doCalculate);
+  window.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runBtn.click(); }
+  });
+})();
 
 /* ============================= EDITABLE GAS TABLE ============================= */
 (function() {
