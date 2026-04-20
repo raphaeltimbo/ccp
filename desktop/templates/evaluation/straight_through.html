@@ -520,6 +520,50 @@ document.querySelectorAll('.seg button').forEach(b => {
       </table>`;
   }
 
+  const CHART_META = [
+    { key: 'head', title: 'Head' },
+    { key: 'eff', title: 'Efficiency' },
+    { key: 'discharge_pressure', title: 'Discharge Pressure' },
+    { key: 'power', title: 'Power' },
+  ];
+
+  function renderCharts(charts) {
+    if (!charts || typeof window.Plotly === 'undefined') return '';
+    const grid = CHART_META.map(({ key, title }) => {
+      const fig = charts[key];
+      const divId = `chart_${key}`;
+      const errorBody = fig && fig.error
+        ? `<div style="padding:12px; color: var(--danger); font-family: var(--font-mono); font-size:12px;">${fig.error}</div>`
+        : '';
+      return `<div class="chart-card">
+        <div class="chart-title">${title}</div>
+        <div id="${divId}" class="chart-body"></div>
+        ${errorBody}
+      </div>`;
+    }).join('');
+
+    return `<h3 style="margin-top:18px;">Performance curves</h3>
+      <div class="chart-grid">${grid}</div>`;
+  }
+
+  function mountCharts(charts) {
+    if (!charts || typeof window.Plotly === 'undefined') return;
+    const isDark = document.documentElement.getAttribute('data-mode') === 'dark';
+    const config = { displaylogo: false, responsive: true };
+    CHART_META.forEach(({ key }) => {
+      const fig = charts[key];
+      const target = document.getElementById(`chart_${key}`);
+      if (!target || !fig || fig.error || !fig.data) return;
+      const layout = { ...(fig.layout || {}),
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { ...(fig.layout?.font || {}), color: isDark ? '#d7d9dc' : '#1f2328' },
+        autosize: true,
+      };
+      Plotly.newPlot(target, fig.data, layout, config);
+    });
+  }
+
   function showResults(data) {
     const skipped = (data.skipped_points || []).length
       ? ` (skipped points: ${data.skipped_points.join(', ')})`
@@ -532,10 +576,15 @@ document.querySelectorAll('.seg button').forEach(b => {
       </div>`;
     resultsContent.innerHTML = info
       + renderTable('Test flange (as-tested)', data.test_flange_points)
-      + renderTable('Converted to operational speed', data.converted_points);
+      + renderTable('Converted to operational speed', data.converted_points)
+      + renderCharts(data.charts);
 
     resultsSection.style.display = '';
     resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Mount charts *after* the DOM is updated so Plotly sees the target divs.
+    mountCharts(data.charts);
+
     if (lastRun) {
       const now = new Date();
       lastRun.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

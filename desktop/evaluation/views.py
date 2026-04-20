@@ -684,6 +684,9 @@ def calculate_straight_through(request):
         except Exception as e:
             return {"point": idx, "error": str(e)}
 
+    # --- Plotly charts ---
+    charts = _build_st_charts(st_obj, form)
+
     return JsonResponse(
         {
             "speed_operational_rpm": float(st_obj.speed_operational.to("rpm").m),
@@ -692,5 +695,80 @@ def calculate_straight_through(request):
             "reynolds_correction": reynolds_correction,
             "test_flange_points": [extract(p, i + 1) for i, p in enumerate(st_obj.points_flange_t)],
             "converted_points": [extract(p, i + 1) for i, p in enumerate(st_obj.points_flange_sp)],
+            "charts": charts,
         }
     )
+
+
+_CURVE_CONFIG = [
+    ("head", "head_plot", "head_units", "kJ/kg"),
+    ("eff", "eff_plot", None, None),
+    ("discharge_pressure", "disch.p_plot", "p_units", "bar"),
+    ("power", "power_plot", "power_units", "kW"),
+]
+
+
+def _build_st_charts(st_obj, form):
+    """Build JSON Plotly figures for head / eff / disch.p / power.
+
+    Returns a dict {curve_key: figure_dict}. If plotting fails for a curve,
+    that key is missing and 'chart_errors' on the enclosing response holds
+    the exception — we keep best-effort so partial failures don't break
+    the result table.
+    """
+    from ccp.impeller import r_getattr
+    import plotly.io as pio
+
+    # Interpolated guarantee point overlay (same pattern as Streamlit page).
+    try:
+        point_interp = st_obj.point(
+            flow_v=st_obj.guarantee_point.flow_v,
+            speed=st_obj.speed_operational,
+        )
+    except Exception:
+        logger.exception("Interpolated guarantee point failed")
+        point_interp = None
+
+    charts = {}
+    for curve_key, plot_attr, y_unit_kw, default_y_unit in _CURVE_CONFIG:
+        try:
+            x_flow_units = form.get(f"x_{curve_key}_flow_units") or "m³/h"
+            y_units = form.get(f"y_{curve_key}_units") or default_y_unit
+            kwargs = {"flow_v_units": x_flow_units}
+            if y_unit_kw and y_units:
+                kwargs[y_unit_kw] = y_units
+
+            fig = r_getattr(st_obj, plot_attr)(show_points=True, **kwargs)
+            if point_interp is not None:
+                try:
+                    fig = r_getattr(point_interp, plot_attr)(
+                        fig=fig, show_points=True, **kwargs
+                    )
+                except Exception:
+                    logger.exception("Overlay for %s failed", curve_key)
+
+            # Apply user-supplied axis ranges if all four bounds are present.
+            x_lo = form.get(f"x_{curve_key}_lower")
+            x_hi = form.get(f"x_{curve_key}_upper")
+            y_lo = form.get(f"y_{curve_key}_lower")
+            y_hi = form.get(f"y_{curve_key}_upper")
+            if all(v not in (None, "") for v in (x_lo, x_hi, y_lo, y_hi)):
+                try:
+                    fig.update_layout(
+                        xaxis_range=(float(x_lo), float(x_hi)),
+                        yaxis_range=(float(y_lo), float(y_hi)),
+                    )
+                except (TypeError, ValueError):
+                    pass
+
+            fig.update_layout(
+                showlegend=True,
+                legend=dict(yanchor="bottom", y=0.01, xanchor="left", x=0.01),
+                margin=dict(l=48, r=16, t=24, b=40),
+            )
+            charts[curve_key] = json.loads(pio.to_json(fig))
+        except Exception as e:
+            logger.exception("Plot %s failed", curve_key)
+            charts[curve_key] = {"error": str(e)}
+
+    return charts

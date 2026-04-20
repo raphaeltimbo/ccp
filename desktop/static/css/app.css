@@ -981,3 +981,31 @@ tr.seal-row td.param-label-cell{
   letter-spacing: 0.04em;
   min-width: 52px;
 }
+
+/* Result charts */
+.chart-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+.chart-card{
+  border: 1px solid var(--rule-soft);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 10px 12px 6px;
+  min-height: 320px;
+  min-width: 0;  /* allow Plotly to size down inside a grid track */
+}
+.chart-title{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.chart-body{
+  width: 100%;
+  min-height: 280px;
+}
