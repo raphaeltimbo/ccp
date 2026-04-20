@@ -22,6 +22,25 @@ COMPONENTS = [
     {"key": "h2o", "formula": "H\u2082O"},
 ]
 
+FLUID_LIST = sorted([
+    "methane", "ethane", "propane", "n-butane", "i-butane", "isobutane",
+    "n-pentane", "i-pentane", "isopentane", "neopentane",
+    "n-hexane", "n-heptane", "n-octane", "n-nonane", "n-decane",
+    "n-undecane", "n-dodecane", "cyclohexane", "cyclopentane", "cyclopropane",
+    "ethylene", "propylene", "1-butene", "i-butene", "cis-2-butene", "trans-2-butene",
+    "1-pentene", "acetylene",
+    "benzene", "toluene", "ethylbenzene", "m-xylene", "o-xylene", "p-xylene",
+    "methanol", "ethanol",
+    "nitrogen", "oxygen", "hydrogen", "helium", "argon", "krypton", "neon", "xenon",
+    "co2", "carbon monoxide", "carbonyl sulfide", "sulfur dioxide",
+    "h2s", "h2o", "water", "steam", "air", "ammonia",
+    "r11", "r12", "r13", "r14", "r22", "r23", "r32", "r41",
+    "r123", "r124", "r125", "r134a", "r143a", "r152a", "r161",
+    "r218", "r227ea", "r236ea", "r236fa", "r245ca", "r245fa",
+    "r1234yf", "r1234ze(e)", "r1234ze(z)",
+    "ethylene oxide", "diethyl ether", "dimethyl ether",
+])
+
 DEFAULT_CASES = [
     {
         "name": "case_a",
@@ -186,6 +205,7 @@ def straight_through(request):
     point_range = range(1, NUM_TEST_POINTS + 1)
     return render(request, "evaluation/straight_through.html", {
         "components": COMPONENTS,
+        "fluid_list": FLUID_LIST,
         "cases": DEFAULT_CASES,
         "gas_names": gas_names,
         "rows": rows,
