@@ -709,7 +709,7 @@ _CURVE_CONFIG = [
 
 
 def _build_st_charts(st_obj, form):
-    """Build JSON Plotly figures for head / eff / disch.p / power.
+    """Build JSON Plotly figures for head / eff / disch.p / power / mach / reynolds.
 
     Returns a dict {curve_key: figure_dict}. If plotting fails for a curve,
     that key is missing and 'chart_errors' on the enclosing response holds
@@ -730,6 +730,22 @@ def _build_st_charts(st_obj, form):
         point_interp = None
 
     charts = {}
+
+    # Mach and Reynolds come from the interpolated point only (match Streamlit).
+    if point_interp is not None:
+        for key, method in (("mach", "plot_mach"), ("reynolds", "plot_reynolds")):
+            try:
+                fig = getattr(point_interp, method)()
+                fig.update_layout(
+                    showlegend=True,
+                    legend=dict(yanchor="bottom", y=0.01, xanchor="left", x=0.01),
+                    margin=dict(l=48, r=16, t=24, b=40),
+                )
+                charts[key] = json.loads(pio.to_json(fig))
+            except Exception as e:
+                logger.exception("Plot %s failed", key)
+                charts[key] = {"error": str(e)}
+
     for curve_key, plot_attr, y_unit_kw, default_y_unit in _CURVE_CONFIG:
         try:
             x_flow_units = form.get(f"x_{curve_key}_flow_units") or "m³/h"
