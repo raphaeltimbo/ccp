@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import logging
@@ -13,6 +14,15 @@ from django.views.decorators.http import require_POST
 logger = logging.getLogger(__name__)
 
 CCP_DESKTOP_FORMAT_VERSION = "0.1"
+
+
+def _strip_data_url(s):
+    """Drop a leading data-URL prefix like 'data:image/png;base64,' if present."""
+    if s.startswith("data:"):
+        comma = s.find(",")
+        if comma != -1:
+            return s[comma + 1 :]
+    return s
 
 COMPONENTS = [
     {"key": "methane", "formula": "CH\u2084"},
@@ -332,6 +342,11 @@ def save_state(request, app_type):
         return JsonResponse({"error": "invalid JSON body"}, status=400)
 
     state = payload.get("state") or {}
+    # Separate PNG images out of the JSON state — they go in as top-level zip
+    # entries (matching Streamlit's on-disk format) rather than being bloated
+    # into session_state.json as base64.
+    curve_images = state.pop("curveImages", None) if isinstance(state, dict) else None
+
     requested_name = (payload.get("filename") or "").strip()
     safe_stem = re.sub(r"[^\w.-]+", "_", requested_name).strip("._") or app_type
     if safe_stem.lower().endswith(".ccp"):
@@ -352,6 +367,17 @@ def save_state(request, app_type):
             "session_state.json",
             json.dumps(session_state, indent=2, ensure_ascii=False),
         )
+        if isinstance(curve_images, dict):
+            for key, b64 in curve_images.items():
+                if not b64:
+                    continue
+                safe_key = re.sub(r"[^\w.-]+", "_", str(key))
+                try:
+                    png_bytes = base64.b64decode(_strip_data_url(str(b64)))
+                except Exception as e:  # noqa: BLE001 — tolerate bad uploads
+                    logger.warning("Skipping fig_%s.png: %s", safe_key, e)
+                    continue
+                zf.writestr(f"fig_{safe_key}.png", png_bytes)
     body = buf.getvalue()
 
     response = HttpResponse(body, content_type="application/zip")
@@ -381,6 +407,16 @@ def load_state(request):
                     status=400,
                 )
             state = json.loads(zf.read("session_state.json").decode("utf-8"))
+
+            curve_images = {}
+            for name in names:
+                m = re.fullmatch(r"fig_([a-zA-Z0-9_-]+)\.png", name)
+                if not m:
+                    continue
+                data = zf.read(name)
+                if not data:
+                    continue
+                curve_images[m.group(1)] = base64.b64encode(data).decode("ascii")
     except zipfile.BadZipFile:
         return JsonResponse({"error": "not a valid .ccp archive"}, status=400)
     except json.JSONDecodeError as e:
@@ -390,6 +426,11 @@ def load_state(request):
 
     if _looks_like_streamlit(state):
         state = _adapt_streamlit_state(state)
+
+    if curve_images:
+        if not isinstance(state, dict):
+            state = {"form": {}, "gas_composition": None}
+        state["curveImages"] = curve_images
 
     return JsonResponse({"version": version, "state": state})
 
@@ -685,7 +726,7 @@ def calculate_straight_through(request):
             return {"point": idx, "error": str(e)}
 
     # --- Plotly charts ---
-    charts = _build_st_charts(st_obj, form)
+    charts = _build_st_charts(st_obj, form, payload.get("curveImages") or {})
 
     return JsonResponse(
         {
@@ -708,7 +749,43 @@ _CURVE_CONFIG = [
 ]
 
 
-def _build_st_charts(st_obj, form):
+def _apply_background_image(fig, form, curve_key, png_b64):
+    """Overlay a base64-encoded PNG as a background image on a figure.
+
+    Requires all four axis bounds (x/y lower/upper) to be present and numeric;
+    otherwise silently skips, since placement is ambiguous without them.
+    """
+    try:
+        x_lo = float(form.get(f"x_{curve_key}_lower"))
+        x_hi = float(form.get(f"x_{curve_key}_upper"))
+        y_lo = float(form.get(f"y_{curve_key}_lower"))
+        y_hi = float(form.get(f"y_{curve_key}_upper"))
+    except (TypeError, ValueError):
+        return
+    try:
+        png_bytes = base64.b64decode(_strip_data_url(str(png_b64)))
+    except Exception:  # noqa: BLE001
+        return
+    if not png_bytes:
+        return
+    encoded = base64.b64encode(png_bytes).decode("ascii")
+    fig.add_layout_image(
+        dict(
+            source=f"data:image/png;base64,{encoded}",
+            xref="x",
+            yref="y",
+            x=x_lo,
+            y=y_hi,
+            sizex=x_hi - x_lo,
+            sizey=y_hi - y_lo,
+            sizing="stretch",
+            opacity=0.5,
+            layer="below",
+        )
+    )
+
+
+def _build_st_charts(st_obj, form, curve_images):
     """Build JSON Plotly figures for head / eff / disch.p / power / mach / reynolds.
 
     Returns a dict {curve_key: figure_dict}. If plotting fails for a curve,
@@ -782,6 +859,11 @@ def _build_st_charts(st_obj, form):
                 legend=dict(yanchor="bottom", y=0.01, xanchor="left", x=0.01),
                 margin=dict(l=48, r=16, t=24, b=40),
             )
+
+            png_b64 = curve_images.get(curve_key) if curve_images else None
+            if png_b64:
+                _apply_background_image(fig, form, curve_key, png_b64)
+
             charts[curve_key] = json.loads(pio.to_json(fig))
         except Exception as e:
             logger.exception("Plot %s failed", curve_key)

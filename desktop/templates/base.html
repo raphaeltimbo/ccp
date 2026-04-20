@@ -354,15 +354,82 @@ window.CCP = window.CCP || {};
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  // { head: "<base64>", eff: "<base64>", ... } — no data-URL prefix
+  window.CCP.curveImages = window.CCP.curveImages || {};
+
+  function updateCurveStatus(key) {
+    const badge = document.querySelector(`.curve-upload-status[data-curve-key="${CSS.escape(key)}"]`);
+    if (!badge) return;
+    const b64 = window.CCP.curveImages[key];
+    if (!b64) {
+      badge.textContent = '';
+      badge.title = '';
+      return;
+    }
+    // Rough byte size estimate: base64 inflates by ~4/3.
+    const kb = Math.round((b64.length * 3) / 4 / 1024);
+    badge.textContent = `✓ loaded (${kb} KB)`;
+    badge.title = 'Click upload to replace';
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const s = reader.result || '';
+        const comma = typeof s === 'string' ? s.indexOf(',') : -1;
+        resolve(comma === -1 ? s : s.slice(comma + 1));
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function wireCurveUploads() {
+    document.querySelectorAll('input[type="file"][data-curve-key]').forEach(inp => {
+      if (inp.dataset.ccpWired === '1') return;
+      inp.dataset.ccpWired = '1';
+      const key = inp.dataset.curveKey;
+      inp.addEventListener('change', async () => {
+        const file = inp.files?.[0];
+        if (!file) {
+          delete window.CCP.curveImages[key];
+          updateCurveStatus(key);
+          return;
+        }
+        try {
+          window.CCP.curveImages[key] = await fileToBase64(file);
+        } catch (e) {
+          delete window.CCP.curveImages[key];
+        }
+        updateCurveStatus(key);
+      });
+      updateCurveStatus(key);
+    });
+  }
+
+  // Wire at startup so fresh page loads already handle uploads.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireCurveUploads);
+  } else {
+    wireCurveUploads();
+  }
+
   window.CCP.collectState = () => ({
     gas_composition: collectGasTable(),
     form: collectForm(),
+    curveImages: { ...window.CCP.curveImages },
   });
 
   window.CCP.applyState = state => {
     if (!state) return;
     if (state.gas_composition) applyGasTable(state.gas_composition);
     if (state.form) applyForm(state.form);
+    if (state.curveImages && typeof state.curveImages === 'object') {
+      window.CCP.curveImages = { ...state.curveImages };
+      wireCurveUploads();
+      Object.keys(window.CCP.curveImages).forEach(updateCurveStatus);
+    }
   };
 
   window.CCP.save = async function () {
