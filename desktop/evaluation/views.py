@@ -1,8 +1,14 @@
+import io
 import json
+import re
+import zipfile
+from datetime import datetime, timezone
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
+
+CCP_DESKTOP_FORMAT_VERSION = "0.1"
 
 COMPONENTS = [
     {"key": "methane", "formula": "CH\u2084"},
@@ -179,6 +185,121 @@ def _build_gas_table_data(cases=None):
     return rows, totals
 
 
+_POLYTROPIC_LABEL_TO_VALUE = {m["label"]: m["value"] for m in POLYTROPIC_METHODS}
+
+
+def _looks_like_streamlit(state):
+    return (
+        isinstance(state, dict)
+        and "gas_compositions_table" in state
+        and "form" not in state
+        and "gas_composition" not in state
+    )
+
+
+def _adapt_streamlit_state(state):
+    """Translate a Streamlit st.session_state dump into the desktop schema."""
+    form = {}
+
+    # Data-sheet (guarantee point) — Streamlit uses `<param>_point_guarantee`
+    # and `<param>_units_point_guarantee`, desktop drops the `_point_`.
+    for param in (p["key"] for p in DATA_SHEET_PARAMETERS):
+        src = state.get(f"{param}_point_guarantee")
+        if src is not None:
+            form[f"{param}_guarantee"] = src
+        src_units = state.get(f"{param}_units_point_guarantee")
+        if src_units is not None:
+            form[f"{param}_units_guarantee"] = src_units
+    if "gas_point_guarantee" in state:
+        form["gas_point_guarantee"] = state["gas_point_guarantee"]
+
+    # Test points — key shape already matches (`<param>_point_<i>` + shared `<param>_units`).
+    for param in (p["key"] for p in TEST_PARAMETERS):
+        for i in range(1, NUM_TEST_POINTS + 1):
+            k = f"{param}_point_{i}"
+            if k in state:
+                form[k] = state[k]
+        units_key = f"{param}_units"
+        if units_key in state:
+            form[units_key] = state[units_key]
+    for i in range(1, NUM_TEST_POINTS + 1):
+        if f"gas_point_{i}" in state:
+            form[f"gas_point_{i}"] = state[f"gas_point_{i}"]
+
+    # Flowrate / orifice — key shape already matches.
+    for param in (p["key"] for p in FLOWRATE_PARAMETERS):
+        for i in range(1, NUM_TEST_POINTS + 1):
+            k = f"{param}_{i}"
+            if k in state:
+                form[k] = state[k]
+        units_key = f"{param}_units"
+        if units_key in state:
+            form[units_key] = state[units_key]
+    for i in range(1, NUM_TEST_POINTS + 1):
+        if f"gas_fo_{i}" in state:
+            form[f"gas_fo_{i}"] = state[f"gas_fo_{i}"]
+
+    # Curve ranges — key shape already matches.
+    for curve in (c["key"] for c in CURVE_TYPES):
+        for suffix in ("lower", "upper", "units"):
+            for axis in ("x", "y"):
+                k = f"{axis}_{curve}_{suffix}"
+                if k in state:
+                    form[k] = state[k]
+        flow_key = f"x_{curve}_flow_units"
+        if flow_key in state:
+            form[flow_key] = state[flow_key]
+
+    # Options (partial mismatch).
+    if "ambient_pressure_magnitude" in state:
+        form["ambient_pressure"] = state["ambient_pressure_magnitude"]
+    for key in (
+        "ambient_pressure_unit",
+        "bearing_mechanical_losses",
+        "oil_specific_heat",
+        "oil_iso",
+        "oil_iso_classification",
+    ):
+        if key in state:
+            form[key] = state[key]
+    if "polytropic_method" in state:
+        label_or_value = state["polytropic_method"]
+        form["polytropic_method"] = _POLYTROPIC_LABEL_TO_VALUE.get(
+            label_or_value, label_or_value
+        )
+
+    # Gas composition — rebuild nested schema, matching by component name
+    # (Streamlit file has 14 components; desktop has 15, n-nonane stays zero).
+    gct = state.get("gas_compositions_table") or {}
+    desktop_components = [c["key"] for c in COMPONENTS]
+    cases = []
+    for i, default in enumerate(DEFAULT_CASES):
+        entry_key = f"gas_{i}"
+        gas_dict = gct.get(entry_key) or {}
+        name = state.get(entry_key) or default["name"]
+        comp_to_value = {}
+        for j in range(len(COMPONENTS) + 1):  # iterate generously
+            comp_name = gas_dict.get(f"component_{j}")
+            if comp_name is None:
+                continue
+            raw = gas_dict.get(f"molar_fraction_{j}", "")
+            try:
+                comp_to_value[str(comp_name)] = float(str(raw).replace(",", ".") or 0)
+            except (TypeError, ValueError):
+                comp_to_value[str(comp_name)] = 0.0
+        values = [comp_to_value.get(c, 0.0) for c in desktop_components]
+        cases.append({"name": str(name), "hue": default["hue"], "values": values})
+
+    return {
+        "app_type": state.get("app_type", "straight_through"),
+        "saved_at": state.get("saved_at"),
+        "source": "streamlit",
+        "ccp_version": state.get("ccp_version"),
+        "form": form,
+        "gas_composition": {"components": desktop_components, "cases": cases},
+    }
+
+
 def performance(request):
     rows, totals = _build_gas_table_data()
     conditions = [
@@ -197,6 +318,76 @@ def performance(request):
         "totals": totals,
         "conditions": conditions,
     })
+
+
+@require_POST
+def save_state(request, app_type):
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "invalid JSON body"}, status=400)
+
+    state = payload.get("state") or {}
+    requested_name = (payload.get("filename") or "").strip()
+    safe_stem = re.sub(r"[^\w.-]+", "_", requested_name).strip("._") or app_type
+    if safe_stem.lower().endswith(".ccp"):
+        safe_stem = safe_stem[:-4]
+    download_name = f"{safe_stem}.ccp"
+
+    session_state = {
+        "app_type": app_type,
+        "schema_version": 1,
+        "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        **state,
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("ccp.version", f"desktop-{CCP_DESKTOP_FORMAT_VERSION}\n")
+        zf.writestr(
+            "session_state.json",
+            json.dumps(session_state, indent=2, ensure_ascii=False),
+        )
+    body = buf.getvalue()
+
+    response = HttpResponse(body, content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{download_name}"'
+    response["Content-Length"] = str(len(body))
+    response["X-CCP-App-Type"] = app_type
+    return response
+
+
+@require_POST
+def load_state(request):
+    upload = request.FILES.get("file")
+    if upload is None:
+        return JsonResponse({"error": "no file uploaded"}, status=400)
+
+    try:
+        with zipfile.ZipFile(upload) as zf:
+            names = zf.namelist()
+            version = (
+                zf.read("ccp.version").decode("utf-8").strip()
+                if "ccp.version" in names
+                else ""
+            )
+            if "session_state.json" not in names:
+                return JsonResponse(
+                    {"error": "session_state.json missing from archive"},
+                    status=400,
+                )
+            state = json.loads(zf.read("session_state.json").decode("utf-8"))
+    except zipfile.BadZipFile:
+        return JsonResponse({"error": "not a valid .ccp archive"}, status=400)
+    except json.JSONDecodeError as e:
+        return JsonResponse(
+            {"error": f"session_state.json is not valid JSON: {e}"}, status=400
+        )
+
+    if _looks_like_streamlit(state):
+        state = _adapt_streamlit_state(state)
+
+    return JsonResponse({"version": version, "state": state})
 
 
 def straight_through(request):

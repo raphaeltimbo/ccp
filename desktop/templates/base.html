@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{% block title %}CCP{% endblock %} — Centrifugal Compressor Performance</title>
+<meta name="ccp-app-type" content="{% block app_type %}none{% endblock %}">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,6 +45,14 @@
 
     <div class="top-right">
       {% block top_right %}{% endblock %}
+      <button class="btn ghost" id="loadBtn" title="Open .ccp session">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
+        Open
+      </button>
+      <button class="btn ghost" id="saveBtn" title="Save .ccp session">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M7 3v5h8"/><path d="M7 21v-8h10v8"/></svg>
+        Save
+      </button>
       <button class="btn ghost icon" title="Search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       </button>
@@ -113,6 +122,8 @@
 
 </div>
 
+<input type="file" id="ccpLoadFile" accept=".ccp,application/zip" hidden>
+
 <!-- TWEAKS PANEL -->
 <div class="tweaks" id="tweaks" x-data="{ open: false }" x-show="open" @tweaks-toggle.window="open = !open" x-cloak>
   <h4>Tweaks <span class="close" @click="open = false">&times;</span></h4>
@@ -161,6 +172,251 @@
 
 <script>
 {% block extra_js %}{% endblock %}
+
+/* ===== STATE SAVE / LOAD ===== */
+window.CCP = window.CCP || {};
+(function () {
+  const appType = document.querySelector('meta[name="ccp-app-type"]')?.content || 'none';
+  if (appType === 'none') return;
+
+  function collectGasTable() {
+    const table = document.getElementById('gasTable');
+    if (!table) return null;
+
+    const cases = [...table.querySelectorAll('thead th.case-head')].map(th => {
+      const name = th.querySelector('.case-name-input')?.value || '';
+      const dot = th.querySelector('.case-dot');
+      const hue = dot?.dataset.hue ? Number(dot.dataset.hue) : null;
+      return { name, hue, values: [] };
+    });
+
+    const componentSelects = [...table.querySelectorAll('tbody .component-select')];
+    const components = componentSelects.map(sel => sel.value || '');
+    componentSelects.forEach((_, rowIdx) => {
+      cases.forEach((c, caseIdx) => {
+        const inp = table.querySelector(
+          `.cell-num-input[data-row="${rowIdx}"][data-case="${caseIdx}"]`
+        );
+        const v = parseFloat((inp?.value || '0').replace(',', '.'));
+        c.values[rowIdx] = Number.isFinite(v) ? v : 0;
+      });
+    });
+    return { components, cases };
+  }
+
+  function applyGasTable(data) {
+    const table = document.getElementById('gasTable');
+    if (!table || !data) return;
+
+    const caseHeads = [...table.querySelectorAll('thead th.case-head')];
+    (data.cases || []).forEach((c, i) => {
+      const th = caseHeads[i];
+      if (!th) return;
+      const nameInput = th.querySelector('.case-name-input');
+      if (nameInput) nameInput.value = c.name || '';
+      const dot = th.querySelector('.case-dot');
+      if (dot && typeof c.hue === 'number') {
+        dot.dataset.hue = String(c.hue);
+        dot.style.background = `oklch(62% 0.14 ${c.hue})`;
+      }
+    });
+
+    const componentSelects = [...table.querySelectorAll('tbody .component-select')];
+    componentSelects.forEach((sel, rowIdx) => {
+      if (data.components && rowIdx < data.components.length) {
+        sel.value = data.components[rowIdx] || '';
+      }
+    });
+
+    const allCells = [...table.querySelectorAll('.cell-num-input')];
+    allCells.forEach(inp => {
+      const r = Number(inp.dataset.row);
+      const c = Number(inp.dataset.case);
+      const v = data.cases?.[c]?.values?.[r];
+      if (typeof v === 'number') inp.value = v.toFixed(3);
+    });
+    // Fire one input event per cell so the page's recalc logic updates bars + totals.
+    allCells.forEach(inp => inp.dispatchEvent(new Event('input', { bubbles: true })));
+
+    syncGasSelects((data.cases || []).map(c => c.name || ''));
+  }
+
+  function syncGasSelects(caseNames) {
+    const selects = document.querySelectorAll(
+      'select[name^="gas_point_"], select[name^="gas_fo_"]'
+    );
+    selects.forEach(sel => {
+      const previous = sel.value;
+      sel.replaceChildren();
+      caseNames.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+      if (caseNames.includes(previous)) sel.value = previous;
+    });
+  }
+
+  function collectForm() {
+    const main = document.getElementById('main');
+    if (!main) return {};
+    const form = {};
+    main.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
+      const name = el.getAttribute('name');
+      if (!name) return;
+      if (el.type === 'checkbox') {
+        form[name] = el.checked;
+      } else if (el.type === 'radio') {
+        if (el.checked) form[name] = el.value;
+      } else if (el.type === 'file') {
+        // Curve images are not yet persisted.
+      } else {
+        form[name] = el.value;
+      }
+    });
+    return form;
+  }
+
+  function applyForm(form) {
+    const main = document.getElementById('main');
+    if (!main || !form) return;
+    Object.entries(form).forEach(([name, value]) => {
+      main.querySelectorAll(`[name="${CSS.escape(name)}"]`).forEach(el => {
+        if (el.type === 'checkbox') {
+          el.checked = Boolean(value);
+        } else if (el.type === 'radio') {
+          el.checked = el.value === value;
+        } else if (el.type === 'file') {
+          // skip
+        } else {
+          el.value = value ?? '';
+        }
+      });
+    });
+  }
+
+  function defaultFilename() {
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+    return `${appType}_${stamp}`;
+  }
+
+  async function requestServerSave(state, filename) {
+    const resp = await fetch(`/save/${appType}/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state, filename }),
+    });
+    if (!resp.ok) {
+      const msg = await resp.text().catch(() => resp.statusText);
+      throw new Error(`Server save failed (${resp.status}): ${msg}`);
+    }
+    const blob = await resp.blob();
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="([^"]+)"/);
+    const fileName = m ? m[1] : `${filename}.ccp`;
+    return { blob, fileName };
+  }
+
+  async function requestServerLoad(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch('/load/', { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({ error: resp.statusText }));
+      throw new Error(body.error || 'Load failed');
+    }
+    return resp.json();
+  }
+
+  function pickFileFromBrowser() {
+    return new Promise(resolve => {
+      const input = document.getElementById('ccpLoadFile');
+      const onChange = () => {
+        input.removeEventListener('change', onChange);
+        resolve(input.files?.[0] || null);
+      };
+      input.addEventListener('change', onChange);
+      input.value = '';
+      input.click();
+    });
+  }
+
+  function triggerBrowserDownload(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  window.CCP.collectState = () => ({
+    gas_composition: collectGasTable(),
+    form: collectForm(),
+  });
+
+  window.CCP.applyState = state => {
+    if (!state) return;
+    if (state.gas_composition) applyGasTable(state.gas_composition);
+    if (state.form) applyForm(state.form);
+  };
+
+  window.CCP.save = async function () {
+    try {
+      const state = window.CCP.collectState();
+      const hasElectron = !!window.ccpElectron?.saveFile;
+      const filename = hasElectron ? defaultFilename() : prompt('Save as:', defaultFilename());
+      if (filename === null) return;
+      const { blob, fileName } = await requestServerSave(state, filename);
+
+      if (hasElectron) {
+        const buffer = await blob.arrayBuffer();
+        const res = await window.ccpElectron.saveFile({
+          suggestedName: fileName,
+          bytes: new Uint8Array(buffer),
+        });
+        if (res?.error) throw new Error(res.error);
+        return;
+      }
+      triggerBrowserDownload(blob, fileName);
+    } catch (e) {
+      console.error(e);
+      alert(`Save failed: ${e.message}`);
+    }
+  };
+
+  window.CCP.load = async function () {
+    try {
+      let file;
+      if (window.ccpElectron?.openFile) {
+        const picked = await window.ccpElectron.openFile();
+        if (!picked || picked.canceled) return;
+        if (picked.error) throw new Error(picked.error);
+        file = new File([picked.bytes], picked.name || 'loaded.ccp');
+      } else {
+        file = await pickFileFromBrowser();
+      }
+      if (!file) return;
+      const data = await requestServerLoad(file);
+      const loadedType = data.state?.app_type;
+      if (loadedType && loadedType !== appType) {
+        if (!confirm(`This file was saved from "${loadedType}" but this page is "${appType}". Load anyway?`)) {
+          return;
+        }
+      }
+      window.CCP.applyState(data.state);
+    } catch (e) {
+      console.error(e);
+      alert(`Load failed: ${e.message}`);
+    }
+  };
+
+  document.getElementById('saveBtn')?.addEventListener('click', () => window.CCP.save());
+  document.getElementById('loadBtn')?.addEventListener('click', () => window.CCP.load());
+})();
 
 /* ===== TWEAKS ENGINE ===== */
 const PALETTES = {

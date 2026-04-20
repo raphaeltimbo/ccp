@@ -1,5 +1,6 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { spawn } = require("child_process");
+const fs = require("fs/promises");
 const path = require("path");
 const net = require("net");
 
@@ -60,6 +61,7 @@ async function createWindow() {
     minHeight: 600,
     title: "CCP — Centrifugal Compressor Performance",
     webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -68,6 +70,39 @@ async function createWindow() {
   win.loadURL(`http://127.0.0.1:${port}/`);
   win.setMenuBarVisibility(false);
 }
+
+ipcMain.handle("ccp:saveFile", async (event, { suggestedName, bytes } = {}) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showSaveDialog(win, {
+    title: "Save CCP session",
+    defaultPath: suggestedName || "session.ccp",
+    filters: [{ name: "CCP session", extensions: ["ccp"] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  try {
+    await fs.writeFile(result.filePath, Buffer.from(bytes));
+    return { path: result.filePath };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle("ccp:openFile", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(win, {
+    title: "Open CCP session",
+    properties: ["openFile"],
+    filters: [{ name: "CCP session", extensions: ["ccp"] }],
+  });
+  if (result.canceled || !result.filePaths?.length) return { canceled: true };
+  try {
+    const filePath = result.filePaths[0];
+    const buf = await fs.readFile(filePath);
+    return { name: path.basename(filePath), bytes: new Uint8Array(buf) };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
 
 app.whenReady().then(createWindow);
 

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Straight-Through{% endblock %}
+{% block app_type %}straight_through{% endblock %}
 
 {% block nav_st %}active{% endblock %}
 
@@ -140,7 +141,7 @@
             </th>
             {% for case in cases %}
             <th class="case-head">
-              <span class="case-dot" style="background: oklch(62% 0.14 {{ case.hue }});"></span>
+              <span class="case-dot" data-hue="{{ case.hue }}" style="background: oklch(62% 0.14 {{ case.hue }});"></span>
               <input type="text" class="case-name-input" value="{{ case.name }}" data-case-idx="{{ forloop.counter0 }}" spellcheck="false" autocomplete="off">
             </th>
             {% endfor %}
