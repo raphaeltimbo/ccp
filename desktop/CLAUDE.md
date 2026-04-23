@@ -1,40 +1,47 @@
 # desktop/ — CLAUDE.md
 
-Context for the **Electron + Django desktop prototype**. Inherits everything from the root `CLAUDE.md`; the notes here apply only when working inside `desktop/`.
+Context for the **Electron + Django desktop app**. Inherits everything from the root `CLAUDE.md`; the notes here apply only when working inside `desktop/`.
 
 ## What this is
 
-A distributable desktop app alternative to the Streamlit UI in `ccp/app/`. Electron spawns a local Django server as a sidecar and loads it in a Chromium window — no REST API, no SPA.
+A distributable desktop app alternative to the Streamlit UI in `ccp/app/`. Electron spawns a local Django server as a sidecar and loads it in a Chromium window — no REST API for external consumers, no SPA.
 
-Status: **prototype**. The UI shell and forms are in place; calculations are not yet wired to the `ccp` library. CoolProp is intentionally not installed in this venv yet.
+Status: **straight-through page is functional end-to-end**. Gas composition → data sheet → test points → Calculate runs the real `ccp.StraightThrough` and returns tables + six Plotly charts (Mach, Reynolds, Head, Efficiency, Discharge Pressure, Power). `.ccp` files round-trip with the Streamlit app, including uploaded curve PNGs.
+
+Performance-evaluation page still mostly mocks. `Calculate Speed` / `Calculate Flowrate` buttons are inert. Oil / seal-gas / casing heat-loss branches are not wired (`bearing_mechanical_losses` is forced off in the calc).
 
 ## Stack
 
-- **Electron** (main.js) — spawns Django, loads `http://127.0.0.1:<port>`
-- **Django 5** — templates + views, no ORM/admin/auth used
-- **HTMX + Alpine.js** — loaded from CDN in `base.html`. HTMX for server interactions, Alpine for small client state (collapsibles, tweaks panel)
-- **Plain CSS** with oklch design tokens — no Tailwind build step
+- **Electron** (main.js) — spawns Django, loads `http://127.0.0.1:<port>`. `preload.js` exposes native file dialogs to the renderer via `contextBridge`.
+- **Django 5** — templates + views. No ORM/admin/auth/sessions/CSRF middleware. Endpoints accept plain JSON or multipart, return JSON or binary.
+- **HTMX + Alpine.js + Plotly.js** — all from CDN in `base.html`. HTMX for server interactions, Alpine for small client state (collapsibles, tweaks panel), Plotly for result charts.
+- **Plain CSS** with oklch design tokens — no Tailwind build step.
+- **`ccp` library** — installed as an editable path dep (`ccp-performance = { path = "..", editable = true }`). Brings CoolProp, pint, plotly, numpy/scipy/pandas.
 
 ## Layout
 
 ```
 desktop/
-├── main.js                  # Electron entry — spawns Django via `uv run`
+├── main.js                  # Electron entry — spawns Django, IPC handlers for native Save/Open dialogs
+├── preload.js               # contextBridge — exposes window.ccpElectron to the renderer
 ├── manage.py                # Django entry
 ├── core/                    # Django project (settings, urls, wsgi)
-├── evaluation/              # Django app — views.py holds the view-model
+├── evaluation/              # Django app — views.py holds the view-model AND the calc/save/load/adapter logic
 ├── templates/
-│   ├── base.html            # app shell: top bar, nav, main, inspector, status
+│   ├── base.html            # app shell + top-bar Save/Open buttons + CCP state JS module
 │   └── evaluation/          # per-page templates
-├── static/css/app.css       # full design system
-├── pyproject.toml           # separate from root ccp library
+├── static/
+│   ├── css/app.css          # full design system + .chart-grid layout
+│   └── js/                  # (reserved; most page JS is still inline in templates)
+├── pyproject.toml           # separate from root ccp; adds ccp-performance as editable path dep
 └── package.json             # Electron deps
 ```
 
 Each page:
 - View in `evaluation/views.py` builds a plain context dict (no forms framework)
 - Template extends `base.html`, fills `content` / `inspector` / `top_right` / `status` blocks
-- Client interactivity via `{% block extra_js %}`
+- Declares `{% block app_type %}<slug>{% endblock %}` so the shared save/load JS knows which `/save/<app_type>/` endpoint to hit
+- Page-specific JS goes in `{% block extra_js %}`; shared JS (state collect/apply, curve upload, tweaks) lives in `base.html`
 
 ## Running
 
@@ -47,7 +54,44 @@ npm install            # first time
 npm start
 ```
 
-Pages: `/` (performance evaluation), `/straight-through/`.
+Pages: `/` (performance evaluation, still mocky), `/straight-through/` (the working one).
+
+## Endpoints
+
+- `POST /save/<app_type>/` — body `{state, filename}` → returns `.ccp` zip bytes with `Content-Disposition`.
+- `POST /load/` — multipart `file=@*.ccp` → returns `{version, state}`. Detects Streamlit-format files and adapts them on the fly.
+- `POST /calculate/straight-through/` — body `{form, gas_composition, curveImages}` → returns `{speed_operational_rpm, test_flange_points, converted_points, charts}`. `charts` is a dict of plotly figure JSON keyed by `mach | reynolds | head | eff | discharge_pressure | power`.
+
+## `.ccp` file format
+
+A zip archive containing:
+- `ccp.version` — version string (`desktop-<v>` on the desktop, `0.3.x` on Streamlit).
+- `session_state.json` — the state dict.
+- `fig_<curve>.png` — optional curve image uploads, at the zip root (matches Streamlit).
+
+**Two schemas coexist inside `session_state.json`:**
+- **Desktop** (what save writes now): nested `{form: {...}, gas_composition: {components[15], cases[6]}, curveImages?}`
+- **Streamlit** (what the ccp app writes): flat `{flow_point_guarantee: "...", suction_pressure_point_guarantee: "...", gas_compositions_table: {gas_0: {...}}, ...}` — 14 components indexed 0..13.
+
+`_adapt_streamlit_state()` in `views.py` bridges from Streamlit → desktop on load. The reverse direction (desktop → Streamlit-loadable) is **not** implemented — a `.ccp` saved by this app won't open in the Streamlit app, though PNG curves round-trip byte-identically because we use the exact same `fig_*.png` naming at the zip root. If bidirectional compatibility is ever needed, write the adapter in the save endpoint too.
+
+## Client-side state API (`window.CCP`)
+
+Defined in `base.html`. Pages opt in by setting `{% block app_type %}`.
+
+- `CCP.collectState()` → `{form, gas_composition, curveImages}`. Walks every `[name]` input under `#main`, plus the gas table (component selects, case names, cell values, hues), plus `window.CCP.curveImages`.
+- `CCP.applyState(state)` — reverse. After restoring gas table values, dispatches `input` events so the page's own recalc code updates bars/totals.
+- `CCP.save()` / `CCP.load()` — top-bar Save/Open button handlers. Use Electron dialogs when `window.ccpElectron` is present, fall back to browser download / `<input type=file>` otherwise.
+- `CCP.curveImages` — `{curveKey: base64String}` (no data-URL prefix). Populated from file inputs with `data-curve-key=...` or from load responses.
+
+## Dual-mode design (Electron vs hosted browser)
+
+The Django endpoints are format-only — they produce or consume `.ccp` bytes over HTTP and never touch the filesystem. Delivery is the layer that varies:
+
+- **Electron renderer** — hands bytes to `main.js` through IPC (`ccp:saveFile` / `ccp:openFile`), which shows `dialog.showSaveDialog` / `showOpenDialog` and reads/writes via `fs/promises`.
+- **Plain browser** — `<a download>` for save and a hidden `<input type=file>` for load. Same endpoints, different delivery.
+
+Don't introduce server-side session storage or per-user DB models to extend save/load — if/when that's needed, layer it as a *second* save target alongside the file flow, not a replacement.
 
 ## Design system
 
@@ -55,13 +99,18 @@ Pages: `/` (performance evaluation), `/straight-through/`.
 - Theme via `html[data-mode]`, `html[data-type]`, `html[data-density]` attributes
 - Palette/hue/mode persisted to `localStorage` (key: `ccp-tweaks`) by script in `base.html`
 - Fonts: Geist + Geist Mono from Google Fonts. Alternates: IBM Plex, Fraunces, JetBrains Mono
+- Result charts use `.chart-grid` (auto-fit minmax(340px, 1fr)) with `.chart-card` tiles; Plotly figures get transparent paper/plot backgrounds so the theme carries through.
 
 ## Gotchas / conventions
 
 - **`.main` must be `display: block`** — not flex. Flex-column collapses sections to viewport height and `overflow: hidden` on `.section` clips their content. Scrolling lives on `.main` itself.
 - **CSS cache-buster**: `base.html` loads `app.css?v={% now 'U' %}` — every request gets a fresh URL, so CSS edits show up without forcing a hard reload.
-- **Section collapse**: each `<section class="section" x-data="{ collapsed: false }">` uses Alpine `x-show` on its `.body`. Header has `@click` that ignores clicks inside `.actions`.
+- **`runserver --noreload`**: templates still hot-reload because the filesystem loader re-reads per request, but Python code changes need a manual restart. If you launch Django in the background make sure to kill the old process before starting a new one.
+- **`barg` is defined at calc time**, not at import. Pint doesn't know "barg" out of the box — `calculate_straight_through` does `ureg.define(f"barg = 1 * bar; offset: {ambient_pressure}")` using the value from the form's Options panel, mirroring `ccp/app/pages/1_straight_through.py`. If you add new endpoints that parse pressures in gauge units, you need the same registration.
+- **`Point.pressure_ratio` is `None`** by default — `Point` just stores it if given, doesn't compute it. The calc endpoint computes it in the extract step from `disch.p / suc.p`.
+- **Section collapse**: each `<section class="section" x-data="{ collapsed: false }">` uses Alpine `x-show` on its `.body`. Header has `@click` that ignores clicks inside `.actions`. `#resultsSection` starts with `collapsed: false` *and* `style="display:none"` — the JS toggles `display` to reveal the expanded section; don't flip `collapsed` to reveal it or Alpine scope access gets fiddly.
 - **Editable gas table**: cells are `<input>` wrapped in `<label class="cell-edit">` so the `::after` bar indicator stays on the wrapper. Reactivity is plain JS (see `extra_js` in `straight_through.html`) — totals and bars recompute on `input` events. Using Alpine for all 90 cells was avoided to keep DOM simple.
+- **Gas-reference dropdowns** (`gas_point_*`, `gas_fo_*`) are rebuilt from current case names every time `applyGasTable` runs — so imported case-name aliases from a Streamlit file actually resolve.
 - **No Python package**: `pyproject.toml` declares `packages = ["core", "evaluation"]` only so `uv sync` succeeds. Nothing here is meant to be importable from outside.
 
 ## Parity with the Streamlit app
@@ -72,9 +121,11 @@ When reimplementing a Streamlit page here:
 - Mirror the `parameters_map` in `common.py` for units and labels, but keep data in plain Python lists in `views.py` (not a mutable module-level dict)
 - Test data tables (multiple points × parameters) render as `<table class="test-table">` with sticky-left parameter column
 - Options that were in the Streamlit sidebar expander live in a slide-out `.options-panel` opened from the section header
+- For the calculation itself, mirror the sequence in `1_straight_through.py` around line 638 (build kwargs_guarantee → build test-point kwargs → `StraightThrough(...)` → extract fields). The Streamlit page is the reference for which fields are optional, how empty strings are handled, and where `Q_` conversions happen.
 
 ## What NOT to do
 
 - Don't add a JS build step, bundler, or Tailwind unless there's a clear reason — the design tokens and HTMX/Alpine approach is the whole point.
-- Don't wire Django models/migrations/auth. This is a single-user desktop app; state lives in the view and the browser.
-- Don't import from the top-level `ccp` package yet — calculation integration is a separate future task. If you do, note that CoolProp/REFPROP are not currently in this venv.
+- Don't wire Django models/migrations/auth. This is still a single-user desktop app; state lives in the view and the browser. If multi-user server-side persistence is ever needed, layer it on top of the file-based flow rather than replacing it.
+- Don't change the `.ccp` zip layout (`session_state.json`, `ccp.version`, `fig_<key>.png`) without also updating the Streamlit adapter, or round-trip with existing `.ccp` files will break.
+- Don't move shared client helpers (`window.CCP.*`, the top-bar Save/Open wiring) out of `base.html` unless you also wire per-page init properly — they assume the app_type meta tag and the `#runBtn` / `#resultsSection` / `#gasTable` IDs.
