@@ -36,11 +36,26 @@ function waitForServer(port, retries = 60) {
 }
 
 function startDjango(port) {
-  const managePy = path.join(__dirname, "manage.py");
-  djangoProcess = spawn("uv", ["run", "python", managePy, "runserver", `${port}`, "--noreload"], {
-    cwd: __dirname,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const args = ["runserver", `${port}`, "--noreload"];
+
+  if (app.isPackaged) {
+    // In the packaged build, the Django sidecar ships as a PyInstaller
+    // onedir bundle under resources/django/ with a ccp-django(.exe) entry.
+    const djangoDir = path.join(process.resourcesPath, "django");
+    const exeName = process.platform === "win32" ? "ccp-django.exe" : "ccp-django";
+    const djangoExe = path.join(djangoDir, exeName);
+    djangoProcess = spawn(djangoExe, args, {
+      cwd: djangoDir,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } else {
+    const managePy = path.join(__dirname, "manage.py");
+    djangoProcess = spawn("uv", ["run", "python", managePy, ...args], {
+      cwd: __dirname,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  }
+
   djangoProcess.stdout.on("data", (d) => process.stdout.write(`[django] ${d}`));
   djangoProcess.stderr.on("data", (d) => process.stderr.write(`[django] ${d}`));
   djangoProcess.on("close", (code) => {
