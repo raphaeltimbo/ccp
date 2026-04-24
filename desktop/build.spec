@@ -18,17 +18,31 @@ def _collect_package(name):
         return [], [], []
 
 
+# Runtime-critical packages imported at ccp load time. ccp/__init__.py
+# does `from ctREFPROP.ctREFPROP import REFPROPFunctionLibrary` unconditionally,
+# and ccp.evaluation (which __init__ imports) pulls sklearn + tqdm.
+# PyInstaller's static analysis can miss these when their import is a deep
+# attribute access, so we collect them explicitly.
 coolprop_datas, coolprop_binaries, coolprop_hidden = collect_all("CoolProp")
 ccp_datas, ccp_binaries, ccp_hidden = collect_all("ccp")
-# plotly ships a pile of template data files (colorscales, default theme, etc.).
 plotly_datas, plotly_binaries, plotly_hidden = _collect_package("plotly")
 pint_datas, pint_binaries, pint_hidden = collect_all("pint")
+refprop_datas, refprop_binaries, refprop_hidden = collect_all("ctREFPROP")
+sklearn_datas, sklearn_binaries, sklearn_hidden = _collect_package("sklearn")
+tqdm_datas, tqdm_binaries, tqdm_hidden = _collect_package("tqdm")
+toml_datas, toml_binaries, toml_hidden = _collect_package("toml")
+pandas_datas, pandas_binaries, pandas_hidden = _collect_package("pandas")
 
 hiddenimports = (
     coolprop_hidden
     + ccp_hidden
     + plotly_hidden
     + pint_hidden
+    + refprop_hidden
+    + sklearn_hidden
+    + tqdm_hidden
+    + toml_hidden
+    + pandas_hidden
     + collect_submodules("django")
     + collect_submodules("whitenoise")
     + collect_submodules("django_htmx")
@@ -38,6 +52,14 @@ hiddenimports = (
         "core.settings",
         "core.urls",
         "core.wsgi",
+        "ctREFPROP.ctREFPROP",
+        "sklearn.cluster",
+        "sklearn.utils._cython_blas",
+        "sklearn.neighbors._typedefs",
+        "sklearn.neighbors._partition_nodes",
+        "tqdm.auto",
+        "scipy.optimize",
+        "scipy.special.cython_special",
     ]
 )
 
@@ -46,13 +68,28 @@ datas = (
     + ccp_datas
     + plotly_datas
     + pint_datas
+    + refprop_datas
+    + sklearn_datas
+    + tqdm_datas
+    + toml_datas
+    + pandas_datas
     + [
         ("templates", "templates"),
         ("static", "static"),
     ]
 )
 
-binaries = coolprop_binaries + ccp_binaries + plotly_binaries + pint_binaries
+binaries = (
+    coolprop_binaries
+    + ccp_binaries
+    + plotly_binaries
+    + pint_binaries
+    + refprop_binaries
+    + sklearn_binaries
+    + tqdm_binaries
+    + toml_binaries
+    + pandas_binaries
+)
 
 
 a = Analysis(

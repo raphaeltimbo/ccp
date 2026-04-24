@@ -47,7 +47,12 @@ jobs:
       - name: Build Django sidecar (PyInstaller)
         run: uv run pyinstaller build.spec --noconfirm --clean
 
-      - name: Smoke-test the sidecar
+      - name: Smoke-test — ccp imports in the frozen bundle
+        run: |
+          & ".\dist\ccp-django\ccp-django.exe" check_ccp
+          if ($LASTEXITCODE -ne 0) { throw "check_ccp failed" }
+
+      - name: Smoke-test — sidecar serves the page
         run: |
           Start-Process -FilePath ".\dist\ccp-django\ccp-django.exe" -ArgumentList "runserver","8419","--noreload" -PassThru | Out-Null
           $attempt = 0
