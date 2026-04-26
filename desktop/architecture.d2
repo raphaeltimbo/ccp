@@ -1,0 +1,349 @@
+# CCP Desktop — Architecture
+#
+# Render with:
+#   d2 desktop/architecture.d2 desktop/architecture.svg
+#
+# Output is a multi-board SVG. Click any node on the overview to drill
+# into the matching sub-board; use the back link in the rendered SVG to
+# return.
+
+title: |md
+  # CCP Desktop — How the stack fits together
+  Click a node to drill into that layer.
+| {near: top-center}
+
+direction: right
+
+user: User {shape: person}
+
+ccp_file: ".ccp file (zip on disk)" {
+  shape: cylinder
+  link: layers.ccp_file
+}
+
+electron: "Electron shell" {
+  style.fill: "#eef3ff"
+  link: layers.electron
+
+  main: "main.js (main process)"
+  preload: "preload.js (contextBridge)"
+  win: "BrowserWindow (Chromium)"
+
+  main -> win: "loadURL http://127.0.0.1:port"
+  preload -> win: "window.ccpElectron"
+}
+
+django: "Django sidecar" {
+  style.fill: "#eaf6ee"
+  link: layers.django
+
+  urls: "urls.py"
+  views: "views.py"
+  templates: "templates/*.html"
+
+  urls -> views -> templates
+}
+
+frontend: "Frontend in Chromium" {
+  style.fill: "#fff4e0"
+  link: layers.frontend
+
+  base: "base.html + window.CCP"
+  htmx: "HTMX"
+  alpine: "Alpine.js"
+  plotly: "Plotly.js"
+  css: "app.css (oklch tokens)"
+}
+
+ccp_lib: "ccp library (Python)" {
+  style.fill: "#f4e8ff"
+  link: layers.calc
+
+  st: "ccp.StraightThrough"
+  coolprop: "CoolProp / REFPROP"
+  pint: "pint / numpy / scipy / pandas"
+
+  st -> coolprop
+  st -> pint
+}
+
+build: "Build & packaging" {
+  style.fill: "#fde8ec"
+  link: layers.build
+
+  pyi: "PyInstaller (build.spec)"
+  eb: "electron-builder"
+  pyi -> eb: "dist/ccp-django/ -> resources/django/"
+}
+
+# Top-level wiring
+user -> electron.win: "clicks Calculate / Save / Open / page nav"
+electron.main -> django: "spawn ccp-django(.exe) — uv run python manage.py in dev"
+electron.win -> django.urls: "HTTP / , /straight-through/ , /calculate/* , /save/* , /load/"
+django.views -> ccp_lib.st: "build kwargs -> StraightThrough(...)"
+django.views -> electron.win: "HTML page or JSON {points, charts}"
+electron.win -> frontend.base: "renders templates, HTMX swaps, Plotly draws"
+electron.win -> electron.preload: "window.ccpElectron.saveFile / openFile"
+electron.preload -> electron.main: "ipcRenderer.invoke"
+electron.main -> ccp_file: "fs.readFile / fs.writeFile (native dialog)"
+django.views -> ccp_file: "zip bytes over HTTP — no server-side fs"
+build -> electron: "ships sidecar + Electron together"
+
+layers: {
+  electron: {
+    title: |md
+      ## Electron shell — main.js / preload.js
+      How the desktop window comes up and how it talks to Django.
+    |
+
+    direction: down
+
+    boot: "App boot sequence" {
+      shape: sequence_diagram
+
+      m: "main.js"
+      n: "net (port probe)"
+      d: "Django child process"
+      w: "BrowserWindow"
+
+      m -> n: "findOpenPort(8418)"
+      n -> m: "free port"
+      m -> d: "spawn ccp-django.exe runserver port --noreload"
+      m -> n: "waitForServer(port) — TCP connect, retry up to 60x500ms"
+      n -> m: "open"
+      m -> w: "new BrowserWindow({ preload, contextIsolation: true })"
+      m -> w: "loadURL http://127.0.0.1:port/"
+      w -> d: "HTTP (HTML, HTMX, JSON, zip bytes)"
+    }
+
+    ipc: "IPC bridge" {
+      preload: "preload.js" {
+        bridge: "contextBridge.exposeInMainWorld('ccpElectron', { saveFile, openFile })"
+      }
+      save: "ipcMain.handle('ccp:saveFile')" {
+        dlg: "dialog.showSaveDialog"
+        fs: "fs.writeFile(path, Buffer.from(bytes))"
+      }
+      open: "ipcMain.handle('ccp:openFile')" {
+        dlg: "dialog.showOpenDialog"
+        fs: "fs.readFile -> Uint8Array"
+      }
+      preload -> save: "ccpElectron.saveFile({ suggestedName, bytes })"
+      preload -> open: "ccpElectron.openFile()"
+    }
+
+    cleanup: "Lifecycle" {
+      ready: "app.whenReady() -> createWindow"
+      closed: "window-all-closed -> djangoProcess.kill() + app.quit()"
+      quit: "before-quit -> djangoProcess.kill()"
+    }
+
+    boot -> ipc: "window is up, renderer can call IPC"
+    ipc -> cleanup
+  }
+
+  django: {
+    title: |md
+      ## Django sidecar
+      Stripped-down Django 5 — templates + views, no ORM, auth, sessions, or CSRF middleware.
+    |
+
+    direction: right
+
+    settings: "core/settings.py" {
+      a: "No DB / migrations / admin"
+      b: "No auth / sessions / CSRF middleware"
+      c: "whitenoise for static"
+      d: "django_htmx middleware"
+    }
+
+    urls: "evaluation/urls.py" {
+      a: "/ -> performance"
+      b: "/straight-through/ -> straight_through"
+      c: "/save/<app_type>/ -> save_state"
+      d: "/load/ -> load_state"
+      e: "/calculate/straight-through/ -> calculate_straight_through"
+    }
+
+    views: "evaluation/views.py" {
+      a: "performance / straight_through: build context dict (no forms framework)"
+      b: "calculate_straight_through: parse form -> ccp -> JSON"
+      c: "save_state: state -> .ccp zip bytes"
+      d: "load_state: multipart .ccp -> { version, state }"
+      e: "_adapt_streamlit_state: Streamlit -> desktop schema"
+    }
+
+    templates: "templates/" {
+      base: "base.html: app shell, top-bar Save/Open, window.CCP, theme tokens"
+      perf: "evaluation/performance.html: perf-eval page (mostly mocky)"
+      st: "evaluation/straight_through.html: working calc page"
+    }
+
+    out: "Response" {
+      a: "JsonResponse"
+      b: "HttpResponse (zip bytes / HTML)"
+    }
+
+    settings -> urls: "ROOT_URLCONF"
+    urls -> views: "dispatch"
+    views -> templates: "render(request, ..., ctx)"
+    views -> out
+  }
+
+  frontend: {
+    title: |md
+      ## Frontend stack — what runs in Chromium
+      No bundler, no SPA. Three vendored scripts under static/vendor/ plus app.css and local woff2 fonts.
+    |
+
+    direction: right
+
+    base: "base.html (shell)" {
+      top_bar: "Top bar — Save / Open / page links"
+      ccpjs: "window.CCP module" {
+        a: "collectState(): walks [name] inputs + gas table + curveImages"
+        b: "applyState(state): inverse, dispatches input events to refresh bars/totals"
+        c: "save(): POST /save/<app_type>/ -> zip bytes -> Electron dialog or <a download>"
+        d: "load(): zip bytes from Electron / <input type=file> -> POST /load/ -> applyState"
+        e: "curveImages: { curveKey: base64 }"
+      }
+      tokens: "oklch design tokens" {
+        a: "html[data-mode] / data-type / data-density"
+        b: "persisted to localStorage('ccp-tweaks')"
+      }
+    }
+
+    htmx: "HTMX (local)" {
+      a: "hx-post / hx-get with hx-target swaps"
+      b: "django_htmx middleware on the server side"
+    }
+
+    alpine: "Alpine.js (local)" {
+      a: "x-data collapsibles on .section cards"
+      b: "tweaks slide-out panel"
+      c: "gas table reactivity is plain JS (90 cells)"
+    }
+
+    plotly: "Plotly.js (local)" {
+      a: "Mach / Reynolds / Head / Eff / Disch P / Power"
+      b: "transparent paper/plot bg so theme shows through"
+    }
+
+    css: "static/css/app.css" {
+      a: "oklch palette + density tokens"
+      b: ".chart-grid auto-fit minmax(340px, 1fr)"
+      c: "cache-buster ?v={% now 'U' %}"
+    }
+
+    base -> htmx: "hx-* attrs in templates"
+    base -> alpine: "x-data on sections"
+    base -> plotly: "Plotly.newPlot in extra_js"
+    base -> css: "<link rel=stylesheet>"
+    base.ccpjs -> base.top_bar: "wires #saveBtn / #openBtn"
+  }
+
+  calc: {
+    title: |md
+      ## /calculate/straight-through/ flow
+      The one fully wired calculation path.
+    |
+
+    direction: down
+
+    req: "POST { form, gas_composition, curveImages }"
+    barg: "ureg.define('barg = 1*bar; offset: ambient_pressure') — from Options panel, mirrors 1_straight_through.py"
+    kg: "build kwargs_guarantee (suction, discharge, speed, flow, gas)"
+    tp: "build per-test-point kwargs (ps, Ts, pd, Td, flow, speed)"
+    st: "ccp.StraightThrough(suc_fl, disch_fl, points, bearing_mechanical_losses=False)"
+    ex: "extract — pressure_ratio = disch.p/suc.p, head, eff, disch_p, power, Mach, Reynolds"
+    figs: "build 6 Plotly figs (Mach, Reynolds, Head, Eff, Discharge Pressure, Power)"
+    resp: "JSON { speed_operational_rpm, test_flange_points, converted_points, charts }"
+
+    req -> barg -> kg -> tp -> st -> ex -> figs -> resp
+
+    notes: |md
+      - `bearing_mechanical_losses=False` — oil/seal-gas/casing-heat-loss branches are not wired yet.
+      - Streamlit page `ccp/app/pages/1_straight_through.py` (~line 638) is the source of truth.
+      - `Point.pressure_ratio` is `None` by default; the extract step computes it.
+    |
+  }
+
+  ccp_file: {
+    title: |md
+      ## .ccp file format
+      A zip archive — same layout as the Streamlit app for round-trip compatibility.
+    |
+
+    direction: down
+
+    zip: ".ccp (zip archive)" {
+      ver: "ccp.version — 'desktop-<v>' or '0.3.x'"
+      state: "session_state.json"
+      pngs: "fig_<curveKey>.png — optional, at zip root"
+    }
+
+    schemas: "Two coexisting schemas inside session_state.json" {
+      desktop: "Desktop schema (this app writes)" {
+        a: "form: { suction, discharge, speed, flow, ... }"
+        b: "gas_composition: components[15] + cases[6]"
+        c: "curveImages? (base64 strings)"
+      }
+      streamlit: "Streamlit schema (ccp app writes)" {
+        a: "flat keys: flow_point_guarantee, suction_pressure_point_guarantee, ..."
+        b: "gas_compositions_table.gas_0"
+        c: "14 components indexed 0..13"
+      }
+    }
+
+    adapter: "_adapt_streamlit_state()" {
+      a: "Streamlit -> desktop on load"
+      b: "Reverse direction NOT implemented: desktop-saved .ccp won't open in Streamlit"
+      c: "PNG curves round-trip byte-identical (both apps use fig_*.png at zip root)"
+    }
+
+    zip -> schemas
+    schemas.streamlit -> adapter -> schemas.desktop
+
+    delivery: "Delivery is layered on top of zip bytes" {
+      electron: "Electron — IPC -> dialog.show*Dialog -> fs.{read,write}File"
+      browser: "Plain browser — <a download> / <input type=file>"
+      note: "Server endpoints never touch the filesystem."
+    }
+  }
+
+  build: {
+    title: |md
+      ## Build & packaging
+      How the Python sidecar gets shipped inside Electron.
+    |
+
+    direction: right
+
+    src: "Source tree" {
+      a: "desktop/manage.py + core/ + evaluation/"
+      b: "../ccp (editable path dep)"
+      c: "templates/ + static/"
+    }
+
+    pyi: "PyInstaller — build.spec" {
+      a: "collect_all: CoolProp, ccp, plotly, pint, ctREFPROP, sklearn, tqdm, toml, pandas"
+      b: "collect_submodules: django, whitenoise, django_htmx, evaluation, core"
+      c: "datas: templates/, static/"
+      d: "excludes: IPython, jupyter, notebook, matplotlib, tkinter"
+      e: "output: dist/ccp-django/ (onedir), entry: ccp-django(.exe)"
+    }
+
+    eb: "electron-builder (package.json > build)" {
+      a: "files: main.js, preload.js, package.json"
+      b: "extraResources: from dist/ccp-django to django"
+      c: "win targets: nsis (installer), zip (portable)"
+    }
+
+    runtime: "Packaged runtime" {
+      a: "app.isPackaged === true -> spawn process.resourcesPath/django/ccp-django(.exe)"
+      b: "Dev (npm start) -> spawn 'uv run python manage.py runserver --noreload'"
+    }
+
+    src -> pyi -> eb -> runtime
+  }
+}
