@@ -6,13 +6,11 @@
 <title>{% block title %}CCP{% endblock %} — Centrifugal Compressor Performance</title>
 <meta name="ccp-app-type" content="{% block app_type %}none{% endblock %}">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'vendor/fonts.css' %}">
 
-<script src="https://unpkg.com/htmx.org@2.0.4"></script>
-<script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="{% static 'vendor/htmx.min.js' %}"></script>
+<script defer src="{% static 'vendor/alpine.min.js' %}"></script>
+<script src="{% static 'vendor/plotly.min.js' %}"></script>
 
 <link rel="stylesheet" href="{% static 'css/app.css' %}?v={% now 'U' %}">
 </head>

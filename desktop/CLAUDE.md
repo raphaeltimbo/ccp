@@ -14,8 +14,9 @@ Performance-evaluation page still mostly mocks. `Calculate Speed` / `Calculate F
 
 - **Electron** (main.js) — spawns Django, loads `http://127.0.0.1:<port>`. `preload.js` exposes native file dialogs to the renderer via `contextBridge`.
 - **Django 5** — templates + views. No ORM/admin/auth/sessions/CSRF middleware. Endpoints accept plain JSON or multipart, return JSON or binary.
-- **HTMX + Alpine.js + Plotly.js** — all from CDN in `base.html`. HTMX for server interactions, Alpine for small client state (collapsibles, tweaks panel), Plotly for result charts.
+- **HTMX + Alpine.js + Plotly.js** — vendored locally under `static/vendor/` and loaded via `{% static %}` in `base.html`. HTMX for server interactions, Alpine for small client state (collapsibles, tweaks panel), Plotly for result charts.
 - **Plain CSS** with oklch design tokens — no Tailwind build step.
+- **Fonts vendored locally** — Geist + Geist Mono + IBM Plex + Fraunces + JetBrains Mono are downloaded as woff2 under `static/vendor/fonts/`, served via `static/vendor/fonts.css`. The full app boots offline; no Google Fonts / unpkg / cdn.plot.ly traffic at runtime.
 - **`ccp` library** — installed as an editable path dep (`ccp-performance = { path = "..", editable = true }`). Brings CoolProp, pint, plotly, numpy/scipy/pandas.
 
 ## Layout
@@ -32,7 +33,8 @@ desktop/
 │   └── evaluation/          # per-page templates
 ├── static/
 │   ├── css/app.css          # full design system + .chart-grid layout
-│   └── js/                  # (reserved; most page JS is still inline in templates)
+│   ├── js/                  # (reserved; most page JS is still inline in templates)
+│   └── vendor/              # local copies of htmx, alpine, plotly, fonts.css + fonts/*.woff2 (offline)
 ├── pyproject.toml           # separate from root ccp; adds ccp-performance as editable path dep
 └── package.json             # Electron deps
 ```
@@ -112,6 +114,7 @@ Don't introduce server-side session storage or per-user DB models to extend save
 - **Editable gas table**: cells are `<input>` wrapped in `<label class="cell-edit">` so the `::after` bar indicator stays on the wrapper. Reactivity is plain JS (see `extra_js` in `straight_through.html`) — totals and bars recompute on `input` events. Using Alpine for all 90 cells was avoided to keep DOM simple.
 - **Gas-reference dropdowns** (`gas_point_*`, `gas_fo_*`) are rebuilt from current case names every time `applyGasTable` runs — so imported case-name aliases from a Streamlit file actually resolve.
 - **No Python package**: `pyproject.toml` declares `packages = ["core", "evaluation"]` only so `uv sync` succeeds. Nothing here is meant to be importable from outside.
+- **Vendored frontend assets** (`static/vendor/`) — htmx, alpine, plotly, and all woff2 files are checked in so the app runs fully offline. To upgrade a JS lib, replace the file under `static/vendor/`. To add or change fonts, edit the Google Fonts URL in `static/vendor/fonts/_vendor.py`, refetch `_remote.css` with a Chrome UA, and re-run the script — it downloads the woff2 files and rewrites `static/vendor/fonts.css` with local paths.
 
 ## Parity with the Streamlit app
 
