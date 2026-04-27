@@ -245,7 +245,12 @@ window.CCP = window.CCP || {};
       'select[name^="gas_point_"], select[name^="gas_fo_"]'
     );
     selects.forEach(sel => {
+      // Preserve the selection by case index across renames: a select
+      // that pointed to case_a should follow that case if it gets
+      // renamed to "c", not snap back to the first option.
+      const oldNames = Array.from(sel.options).map(o => o.value);
       const previous = sel.value;
+      const idx = oldNames.indexOf(previous);
       sel.replaceChildren();
       caseNames.forEach(name => {
         const opt = document.createElement('option');
@@ -253,7 +258,22 @@ window.CCP = window.CCP || {};
         opt.textContent = name;
         sel.appendChild(opt);
       });
-      if (caseNames.includes(previous)) sel.value = previous;
+      if (idx >= 0 && idx < caseNames.length) {
+        sel.value = caseNames[idx];
+      } else if (caseNames.includes(previous)) {
+        sel.value = previous;
+      }
+    });
+  }
+
+  function wireCaseNameSync() {
+    const table = document.getElementById('gasTable');
+    if (!table || table.dataset.caseSyncWired === '1') return;
+    table.dataset.caseSyncWired = '1';
+    table.addEventListener('input', e => {
+      if (!e.target.classList?.contains('case-name-input')) return;
+      const names = [...table.querySelectorAll('.case-name-input')].map(i => i.value || '');
+      syncGasSelects(names);
     });
   }
 
@@ -407,10 +427,14 @@ window.CCP = window.CCP || {};
   }
 
   // Wire at startup so fresh page loads already handle uploads.
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', wireCurveUploads);
-  } else {
+  function wireOnReady() {
     wireCurveUploads();
+    wireCaseNameSync();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireOnReady);
+  } else {
+    wireOnReady();
   }
 
   window.CCP.collectState = () => ({
