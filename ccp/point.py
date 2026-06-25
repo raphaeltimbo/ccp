@@ -230,7 +230,6 @@ class Point:
         # dummy state used to avoid copying states
         self._dummy_state = copy(self.suc)
 
-        kwargs_list = []
         kwargs_dict = {}
         reasonable_ranges = {
             "eff": (0.3, 1.0),
@@ -259,14 +258,22 @@ class Point:
             "torque",
         ]:
             if getattr(self, k) is not None:
-                kwargs_list.append(k)
                 kwargs_dict[k] = getattr(self, k)
 
-        kwargs_str = "_".join(sorted(kwargs_list))
+        # The point is computed by a constraint-propagation solver: given any
+        # sufficient subset of the arguments above, it fills in the rest (see
+        # ccp.point_solver). ``solve`` returns the required variables it could
+        # not determine (empty when the point is fully defined).
+        from ccp.point_solver import solve
 
         try:
-            getattr(self, "_calc_from_" + kwargs_str)()
+            unresolved = solve(self)
         except (ValueError, RuntimeError):
+            # a thermodynamic relation failed to converge, typically because an
+            # argument is out of a physically reasonable range
+            unresolved = None
+
+        if unresolved:
             kwargs_repr = (
                 str(kwargs_dict)
                 .replace(">", "")
@@ -287,6 +294,8 @@ class Point:
 
             raise ValueError(
                 f"Could not calculate point with ccp.Point(**{kwargs_repr}).\n"
+                "The provided arguments are insufficient to fully define the "
+                "point.\n"
                 "The following kwargs seems out of reasonable range: "
                 f"{out_of_range_dict}."
             )
@@ -376,459 +385,6 @@ class Point:
             f' eff=Q_("{self.eff:.3f~P}"),'
             f' power_losses=Q_("{self.power_losses:.0f~P}"))'
         )
-
-    def _calc_from_disch_flow_v_speed_suc(self):
-        self.head = self.head_calc_func(self.suc, self.disch, self._dummy_state)
-        self.eff = self.eff_calc_func(self.suc, self.disch, self._dummy_state)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        self.flow_m = self.suc.rho() * self.flow_v
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        if self.casing_temperature is not None:
-            # correct efficiency with casing heat loss
-            self.casing_heat_loss = (
-                self.convection_constant
-                * self.casing_area
-                * (self.casing_temperature - self.ambient_temperature)
-            )
-            self.eff = self.eff / (
-                1
-                + (
-                    self.casing_heat_loss
-                    / ((self.disch.h() - self.suc.h()) * self.flow_m)
-                )
-            )
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_flow_v_speed_suc_torque(self):
-        self._calc_from_disch_flow_v_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_disch_flow_v_power_losses_speed_suc(self):
-        self._calc_from_disch_flow_v_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_flow_m_speed_suc(self):
-        self.head = self.head_calc_func(self.suc, self.disch, self._dummy_state)
-        self.eff = self.eff_calc_func(self.suc, self.disch, self._dummy_state)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        self.flow_v = self.flow_m / self.suc.rho()
-        if self.casing_temperature is not None:
-            # correct efficiency with casing heat loss
-            self.casing_heat_loss = (
-                self.convection_constant
-                * self.casing_area
-                * (self.casing_temperature - self.ambient_temperature)
-            )
-            self.eff = self.eff / (
-                1
-                + (
-                    self.casing_heat_loss
-                    / ((self.disch.h() - self.suc.h()) * self.flow_m)
-                )
-            )
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_flow_m_speed_suc_torque(self):
-        self._calc_from_disch_flow_m_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_disch_flow_m_power_losses_speed_suc(self):
-        self._calc_from_disch_flow_m_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_phi_psi_suc_volume_ratio(self):
-        eff = self.eff
-        suc = self.suc
-        volume_ratio = self.volume_ratio
-
-        disch_v = suc.v() / volume_ratio
-        disch_rho = 1 / disch_v
-
-        # consider first an isentropic compression
-        disch = State(rho=disch_rho, s=suc.s(), fluid=suc.fluid)
-
-        def update_state(x, update_type):
-            if update_type == "pressure":
-                disch.update(rho=disch_rho, p=x)
-            elif update_type == "temperature":
-                disch.update(rho=disch_rho, T=x)
-            new_eff = self.eff_calc_func(self.suc, disch)
-            if not 0.0 < new_eff < 1.5:
-                raise ValueError("Efficiency did not converge")
-
-            return (new_eff - eff).magnitude
-
-        try:
-            newton(update_state, disch.T().magnitude, args=("temperature",), tol=1e-1)
-        except ValueError:
-            # re-instantiate disch, since update with temperature not converging
-            # might break the state
-            disch = State(rho=disch_rho, s=suc.s(), fluid=suc.fluid)
-            newton(update_state, disch.p().magnitude, args=("pressure",), tol=1e-1)
-
-        self.disch = disch
-        self.head = self.head_calc_func(suc, disch, self._dummy_state)
-        self.speed = speed_from_psi(self.D, self.head, self.psi)
-        self.flow_v = flow_from_phi(self.D, self.phi, self.speed)
-        self.flow_m = self.flow_v * self.suc.rho()
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_phi_psi_suc_torque_volume_ratio(self):
-        self._calc_from_eff_phi_psi_suc_volume_ratio()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_eff_phi_power_losses_psi_suc_volume_ratio(self):
-        self._calc_from_eff_phi_psi_suc_volume_ratio()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_flow_v_head_speed_suc(self):
-        eff = self.eff
-        head = self.head
-        suc = self.suc
-        disch = disch_from_suc_head_eff(suc, head, eff)
-        self.disch = disch
-        self.flow_m = self.flow_v * self.suc.rho()
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_flow_v_head_speed_suc_torque(self):
-        self._calc_from_eff_flow_v_head_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_eff_flow_v_head_power_losses_speed_suc(self):
-        self._calc_from_eff_flow_v_head_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_flow_m_head_speed_suc(self):
-        eff = self.eff
-        head = self.head
-        suc = self.suc
-        disch = disch_from_suc_head_eff(suc, head, eff)
-        self.disch = disch
-        self.flow_v = self.flow_m / self.suc.rho()
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_flow_m_head_speed_suc_torque(self):
-        self._calc_from_eff_flow_m_head_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_eff_flow_m_head_power_losses_speed_suc(self):
-        self._calc_from_eff_flow_m_head_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_phi_psi_speed_suc(self):
-        self.head = head_from_psi(self.D, self.psi, self.speed)
-        self.disch = disch_from_suc_head_eff(self.suc, self.head, self.eff)
-        self.flow_v = flow_from_phi(self.D, self.phi, self.speed)
-        self.flow_m = self.flow_v * self.suc.rho()
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_eff_phi_psi_speed_suc_torque(self):
-        self._calc_from_eff_phi_psi_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_eff_phi_power_losses_psi_speed_suc(self):
-        self._calc_from_eff_phi_psi_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_p_eff_flow_v_speed_suc(self):
-        eff = self.eff
-        suc = self.suc
-        disch = disch_from_suc_disch_p_eff(suc, self.disch_p, eff)
-        self.disch = disch
-        self.head = self.head_calc_func(suc, disch, self._dummy_state)
-        self.flow_m = self.flow_v * self.suc.rho()
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_p_eff_flow_v_speed_suc_torque(self):
-        self._calc_from_disch_p_eff_flow_v_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_disch_p_eff_flow_v_power_losses_speed_suc(self):
-        self._calc_from_disch_p_eff_flow_v_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_p_eff_flow_m_speed_suc(self):
-        eff = self.eff
-        suc = self.suc
-        disch = disch_from_suc_disch_p_eff(suc, self.disch_p, eff)
-        self.disch = disch
-        self.head = self.head_calc_func(suc, disch, self._dummy_state)
-        self.flow_v = self.flow_m / self.suc.rho()
-        self.power = power_calc(self.flow_m, self.head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_p_eff_flow_m_speed_suc_torque(self):
-        self._calc_from_disch_p_eff_flow_m_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_disch_p_eff_flow_m_power_losses_speed_suc(self):
-        self._calc_from_disch_p_eff_flow_m_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_v_head_power_speed_suc(self):
-        suc = self.suc
-        head = self.head
-        power = self.power
-        self.flow_m = self.flow_v * self.suc.rho()
-        self.eff = (self.flow_m * head / power).to("dimensionless")
-        self.disch = disch_from_suc_head_eff(suc, head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_v_head_power_speed_suc_torque(self):
-        self._calc_from_flow_v_head_power_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_flow_v_head_power_power_losses_speed_suc(self):
-        self._calc_from_flow_v_head_power_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_m_head_power_speed_suc(self):
-        suc = self.suc
-        head = self.head
-        power = self.power
-        self.flow_v = self.flow_m / self.suc.rho()
-        self.eff = (self.flow_m * head / power).to("dimensionless")
-        self.disch = disch_from_suc_head_eff(suc, head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_m_head_power_speed_suc_torque(self):
-        self._calc_from_flow_m_head_power_speed_suc()
-        self.power_shaft = self.torque * self.speed
-        self.power_losses = self.power_shaft - self.power
-
-    def _calc_from_flow_m_head_power_power_losses_speed_suc(self):
-        self._calc_from_flow_m_head_power_speed_suc()
-        self.power_shaft = self.power + self.power_losses
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_v_head_power_shaft_speed_suc(self):
-        suc = self.suc
-        head = self.head
-        power_shaft = self.power_shaft
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power = power_shaft - self.power_losses
-        self.flow_m = self.flow_v * self.suc.rho()
-        self.eff = (self.flow_m * head / self.power).to("dimensionless")
-        self.disch = disch_from_suc_head_eff(suc, head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_m_head_power_shaft_speed_suc(self):
-        suc = self.suc
-        head = self.head
-        power_shaft = self.power_shaft
-        if not self.power_losses:
-            self.power_losses = Q_(0, "watt")
-        self.power = power_shaft - self.power_losses
-        self.flow_v = self.flow_m / self.suc.rho()
-        self.eff = (self.flow_m * head / self.power).to("dimensionless")
-        self.disch = disch_from_suc_head_eff(suc, head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_v_head_power_losses_power_shaft_speed_suc(self):
-        suc = self.suc
-        head = self.head
-        power_shaft = self.power_shaft
-        self.power = power_shaft - self.power_losses
-        self.flow_m = self.flow_v * self.suc.rho()
-        self.eff = (self.flow_m * head / self.power).to("dimensionless")
-        self.disch = disch_from_suc_head_eff(suc, head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_flow_m_head_power_losses_power_shaft_speed_suc(self):
-        suc = self.suc
-        head = self.head
-        power_shaft = self.power_shaft
-        self.power = power_shaft - self.power_losses
-        self.flow_v = self.flow_m / self.suc.rho()
-        self.eff = (self.flow_m * head / self.power).to("dimensionless")
-        self.disch = disch_from_suc_head_eff(suc, head, self.eff)
-        self.phi = phi(self.flow_v, self.speed, self.D)
-        self.psi = psi(self.head, self.speed, self.D)
-        self.volume_ratio = self.suc.v() / self.disch.v()
-        self.torque = self.power_shaft / self.speed
-
-    def _calc_from_disch_T_flow_v_pressure_ratio_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        pressure_ratio = self.pressure_ratio
-        disch_p = suc.p() * pressure_ratio
-        self.disch = State(p=disch_p, T=disch_T, fluid=suc.fluid)
-        self._calc_from_disch_flow_v_speed_suc()
-
-    def _calc_from_disch_T_flow_v_pressure_ratio_speed_suc_torque(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        pressure_ratio = self.pressure_ratio
-        disch_p = suc.p() * pressure_ratio
-        self.disch = State(p=disch_p, T=disch_T, fluid=suc.fluid)
-        self._calc_from_disch_flow_v_speed_suc_torque()
-
-    def _calc_from_disch_T_flow_v_power_losses_pressure_ratio_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        pressure_ratio = self.pressure_ratio
-        disch_p = suc.p() * pressure_ratio
-        self.disch = State(p=disch_p, T=disch_T, fluid=suc.fluid)
-        self._calc_from_disch_flow_v_power_losses_speed_suc()
-
-    def _calc_from_disch_T_flow_m_pressure_ratio_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        pressure_ratio = self.pressure_ratio
-        disch_p = suc.p() * pressure_ratio
-        self.disch = State(p=disch_p, T=disch_T, fluid=suc.fluid)
-        self._calc_from_disch_flow_m_speed_suc()
-
-    def _calc_from_disch_T_flow_m_pressure_ratio_speed_suc_torque(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        pressure_ratio = self.pressure_ratio
-        disch_p = suc.p() * pressure_ratio
-        self.disch = State(p=disch_p, T=disch_T, fluid=suc.fluid)
-        self._calc_from_disch_flow_m_speed_suc_torque()
-
-    def _calc_from_disch_T_flow_m_power_losses_pressure_ratio_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        pressure_ratio = self.pressure_ratio
-        disch_p = suc.p() * pressure_ratio
-        self.disch = State(p=disch_p, T=disch_T, fluid=suc.fluid)
-        self._calc_from_disch_flow_m_power_losses_speed_suc()
-
-    def _calc_from_disch_T_flow_v_head_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        head = self.head
-
-        self.disch = disch_from_suc_disch_T_head(suc, disch_T, head)
-        self._calc_from_disch_flow_v_speed_suc()
-
-    def _calc_from_disch_T_flow_v_head_speed_suc_torque(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        head = self.head
-
-        self.disch = disch_from_suc_disch_T_head(suc, disch_T, head)
-        self._calc_from_disch_flow_v_speed_suc_torque()
-
-    def _calc_from_disch_T_flow_v_head_power_losses_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        head = self.head
-
-        self.disch = disch_from_suc_disch_T_head(suc, disch_T, head)
-        self._calc_from_disch_flow_v_power_losses_speed_suc()
-
-    def _calc_from_disch_T_flow_m_head_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        head = self.head
-
-        self.disch = disch_from_suc_disch_T_head(suc, disch_T, head)
-        self._calc_from_disch_flow_m_speed_suc()
-
-    def _calc_from_disch_T_flow_m_head_speed_suc_torque(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        head = self.head
-
-        self.disch = disch_from_suc_disch_T_head(suc, disch_T, head)
-        self._calc_from_disch_flow_m_speed_suc_torque()
-
-    def _calc_from_disch_T_flow_m_head_power_losses_speed_suc(self):
-        suc = self.suc
-        disch_T = self.disch_T
-        head = self.head
-
-        self.disch = disch_from_suc_disch_T_head(suc, disch_T, head)
-        self._calc_from_disch_flow_m_power_losses_speed_suc()
 
     @classmethod
     @check_units
@@ -968,6 +524,7 @@ class Point:
             p=str(self.suc.p()),
             T=str(self.suc.T()),
             fluid=self.suc.fluid,
+            phase=str(self.suc.phase),
             speed=str(self.speed),
             flow_v=str(self.flow_v),
             head=str(self.head),
@@ -987,10 +544,16 @@ class Point:
     @staticmethod
     def _dict_from_load(dict_parameters):
         """Change dict to format that can be used by load constructor."""
+        phase = dict_parameters.pop("phase", None)
+        # backwards compatibility: older files store no phase, newer ones may
+        # store the string "None" when no phase was forced.
+        if phase in (None, "None", ""):
+            phase = None
         suc = State(
             p=Q_(dict_parameters.pop("p")),
             T=Q_(dict_parameters.pop("T")),
             fluid=dict_parameters.pop("fluid"),
+            phase=phase,
         )
         extrapolated = dict_parameters.pop("extrapolated", False)
         # Convert string to boolean if needed (for backwards compatibility)
@@ -2090,7 +1653,7 @@ def head_reference(suc, disch, num_steps=100):
     """
 
     def calc_step_discharge_temp(T1, p1, p0, h0, v0, e):
-        s1 = State(p=p1, T=T1, fluid=suc.fluid)
+        s1 = State(p=p1, T=T1, fluid=suc.fluid, phase=suc.phase)
         h1 = s1.h()
 
         vm = (v0 + s1.v()) / 2
@@ -2117,11 +1680,11 @@ def head_reference(suc, disch, num_steps=100):
 
         # TODO implement p_intervals considering pressure ratio
         for p0, p1 in zip(p_intervals[:-1], p_intervals[1:]):
-            s0 = State(p=p0, T=T0, fluid=suc.fluid)
+            s0 = State(p=p0, T=T0, fluid=suc.fluid, phase=suc.phase)
             T1 = newton(
                 calc_step_discharge_temp, (T0 + 1e-3), args=(p1, p0, s0.h(), s0.v(), e)
             )
-            s1 = State(p=p1, T=T1, fluid=suc.fluid)
+            s1 = State(p=p1, T=T1, fluid=suc.fluid, phase=suc.phase)
             _ref_H += head_pol(s0, s1)
 
             T0 = T1
@@ -2183,7 +1746,7 @@ def head_reference_2017(suc, disch, num_steps=100):
         p = next_p
         p_intervals.append(p)
 
-    state1 = ccp.State(p=suc.p(), s=suc.s(), fluid=suc.fluid)
+    state1 = ccp.State(p=suc.p(), s=suc.s(), fluid=suc.fluid, phase=suc.phase)
 
     def calc_step_discharge_z(s1, s0, p1, p0, z0, R, e):
         state1.update(p=p1, s=s1)
@@ -2202,11 +1765,11 @@ def head_reference_2017(suc, disch, num_steps=100):
         s0 = suc.s().magnitude
 
         for p0, p1 in zip(p_intervals[:-1], p_intervals[1:]):
-            state0 = ccp.State(p=p0, s=s0, fluid=suc.fluid)
+            state0 = ccp.State(p=p0, s=s0, fluid=suc.fluid, phase=suc.phase)
             z0 = state0.z()
 
             s1 = newton(calc_step_discharge_z, (s0 + 1e-8), args=(s0, p1, p0, z0, R, e))
-            state1 = ccp.State(p=p1, s=s1, fluid=suc.fluid)
+            state1 = ccp.State(p=p1, s=s1, fluid=suc.fluid, phase=suc.phase)
             _ref_H_2017 += ccp.point.head_pol(state0, state1)
 
             s0 = s1
@@ -2345,11 +1908,15 @@ def head_pol_sandberg_colby_multistep(suc, disch, nstep=10):
 
             for _ in range(nstep):
                 # Isentropic discharge state for step j
-                disch_j = ccp.State(p=pd_j, s=suc_j.s(), fluid=suc_j.fluid)
+                disch_j = ccp.State(
+                    p=pd_j, s=suc_j.s(), fluid=suc_j.fluid, phase=suc_j.phase
+                )
 
                 def calc_delta_eff_p(Td_j):
                     """Calculate Δη_p = η_p,j - η_p for step j."""
-                    disch_j = ccp.State(p=pd_j, T=Td_j, fluid=suc_j.fluid)
+                    disch_j = ccp.State(
+                        p=pd_j, T=Td_j, fluid=suc_j.fluid, phase=suc_j.phase
+                    )
                     wp_j = head_pol_sandberg_colby(suc_j, disch_j)
                     eff_p_j = wp_j / (disch_j.h() - suc_j.h())
                     return (eff_p_j - eff_p).m
@@ -2361,7 +1928,9 @@ def head_pol_sandberg_colby_multistep(suc, disch, nstep=10):
                 Td_j = brentq(calc_delta_eff_p, T_isen, T_isen + 20)
 
                 # Update discharge state with calculated temperature
-                disch_j = ccp.State(p=pd_j, T=Td_j, fluid=suc_j.fluid)
+                disch_j = ccp.State(
+                    p=pd_j, T=Td_j, fluid=suc_j.fluid, phase=suc_j.phase
+                )
 
                 # Prepare for next step: suc_j+1 = disch_j
                 suc_j.update(p=disch_j.p(), T=disch_j.T())
@@ -2541,7 +2110,7 @@ def eff_pol_huntington(suc, disch, disch_s=None):
     error = 1
     n = 0
     while error > 1e-10:
-        state3 = State(p=p3, T=T3, fluid=suc.fluid)
+        state3 = State(p=p3, T=T3, fluid=suc.fluid, phase=suc.phase)
         s3 = state3.s()
         z3 = state3.z()
         cp3 = state3.cp()
@@ -2792,6 +2361,109 @@ def head_from_psi(D, psi, speed):
     return head.to("J/kg")
 
 
+def isentropic_disch_from_rho(suc, disch_rho):
+    """Discharge state of an isentropic compression to a target density.
+
+    The discharge is normally obtained from a ``State(rho=disch_rho, s=suc.s())``
+    flash (CoolProp ``DmassSmass`` inputs). For dense fluids that flash can return a
+    spurious root: two states share the same ``(rho, s)`` — the physical compression
+    (``disch.p >= suc.p``) and a cold, liquid-like root *below* suction pressure — and
+    the flash may return the cold one. Seeding the downstream efficiency solve from
+    that non-physical root makes it diverge (e.g. converting a performance map to a
+    dense, CO2-rich, near-critical suction condition).
+
+    When the flash lands on such a non-compression root we re-solve for the pressure
+    on the suction isentrope that matches ``disch_rho``. Density increases
+    monotonically with pressure along an isentrope, so bracketing from the suction
+    pressure upward selects the physical compression root.
+
+    Parameters
+    ----------
+    suc : ccp.State
+        Suction state.
+    disch_rho : pint.Quantity
+        Target discharge density.
+
+    Returns
+    -------
+    disch : ccp.State
+        Discharge state of the isentropic compression to ``disch_rho``.
+    """
+    disch = State(rho=disch_rho, s=suc.s(), fluid=suc.fluid, phase=suc.phase)
+
+    # for a compression (disch_rho > suc.rho) the physical isentropic discharge must
+    # have disch.p >= suc.p; otherwise the (rho, s) flash returned a spurious root.
+    if not (disch_rho > suc.rho() and disch.p() < suc.p()):
+        return disch
+
+    s_suc = suc.s()
+    rho_target = disch_rho.to("kg/m**3").magnitude
+
+    def rho_err(p_pa):
+        disch.update(p=Q_(p_pa, "Pa"), s=s_suc)
+        return disch.rho().to("kg/m**3").magnitude - rho_target
+
+    # bracket: rho_err < 0 at suction pressure; expand the upper bound until the
+    # isentrope reaches the target density (rho_err >= 0).
+    p_lo = suc.p().to("Pa").magnitude
+    p_hi = 2.0 * p_lo
+    for _ in range(60):
+        if rho_err(p_hi) >= 0.0:
+            break
+        p_hi *= 2.0
+    p_sol = brentq(rho_err, p_lo, p_hi, xtol=1.0)
+    disch.update(p=Q_(p_sol, "Pa"), s=s_suc)
+    return disch
+
+
+def disch_from_suc_rho_eff(suc, disch_rho, eff, eff_calc_func):
+    """Discharge at a fixed density matching a polytropic efficiency.
+
+    Robust alternative to the secant iteration used in the volume-ratio conversion.
+    Starting from the isentropic discharge (polytropic efficiency ~ 1.0), the
+    polytropic efficiency decreases monotonically as temperature rises at constant
+    density, so the target efficiency (< 1) is bracketed between the isentropic
+    temperature and a higher one and found with ``brentq``. The secant can diverge
+    for dense fluids — its tiny initial step yields a near-zero efficiency slope and
+    overshoots to a non-physical state — so this is used as a fallback there.
+
+    Parameters
+    ----------
+    suc : ccp.State
+        Suction state.
+    disch_rho : pint.Quantity
+        Target discharge density.
+    eff : pint.Quantity, float
+        Target polytropic efficiency.
+    eff_calc_func : callable
+        ``eff_calc_func(suc, disch)`` returning the polytropic efficiency.
+
+    Returns
+    -------
+    disch : ccp.State
+        Discharge state.
+    """
+    disch = isentropic_disch_from_rho(suc, disch_rho)
+    T_lo = disch.T().to("kelvin").magnitude
+
+    def eff_err(T):
+        disch.update(rho=disch_rho, T=Q_(T, "kelvin"))
+        return (eff_calc_func(suc, disch) - eff).magnitude
+
+    f_lo = eff_err(T_lo)
+    T_hi = T_lo * 1.02
+    for _ in range(80):
+        if f_lo * eff_err(T_hi) < 0:
+            break
+        T_hi *= 1.02
+    else:
+        raise ValueError("Could not bracket efficiency in volume-ratio conversion")
+
+    T_sol = brentq(eff_err, T_lo, T_hi, xtol=1e-2)
+    disch.update(rho=disch_rho, T=Q_(T_sol, "kelvin"))
+    return disch
+
+
 def disch_from_suc_head_eff(suc, head, eff, polytropic_method=None):
     """Calculate discharge state from suction, head and efficiency.
 
@@ -2816,7 +2488,7 @@ def disch_from_suc_head_eff(suc, head, eff, polytropic_method=None):
     h_disch = head / eff + suc.h()
 
     #  consider first an isentropic compression
-    disch = State(h=h_disch, s=suc.s(), fluid=suc.fluid)
+    disch = State(h=h_disch, s=suc.s(), fluid=suc.fluid, phase=suc.phase)
 
     def update_state(x, update_type):
         if update_type == "pressure":
@@ -2829,7 +2501,7 @@ def disch_from_suc_head_eff(suc, head, eff, polytropic_method=None):
     try:
         newton(update_state, disch.p().magnitude, args=("pressure",), tol=1e-1)
     except (RuntimeError, ValueError):
-        disch = State(h=h_disch, s=suc.s(), fluid=suc.fluid)
+        disch = State(h=h_disch, s=suc.s(), fluid=suc.fluid, phase=suc.phase)
         newton(
             update_state,
             disch.T().magnitude,
@@ -2861,7 +2533,7 @@ def disch_from_suc_disch_p_eff(suc, disch_p, eff, polytropic_method=None):
     if polytropic_method is None:
         polytropic_method = ccp.config.POLYTROPIC_METHOD
 
-    disch = ccp.State(p=disch_p, s=suc.s(), fluid=suc.fluid)
+    disch = ccp.State(p=disch_p, s=suc.s(), fluid=suc.fluid, phase=suc.phase)
     eff_calc_func = globals()[f"eff_pol_{polytropic_method}"]
 
     def update_state(x):
@@ -2896,7 +2568,7 @@ def disch_from_suc_disch_T_head(suc, disch_T, head, polytropic_method=None):
     if polytropic_method is None:
         polytropic_method = ccp.config.POLYTROPIC_METHOD
 
-    disch = ccp.State(T=disch_T, s=suc.s(), fluid=suc.fluid)
+    disch = ccp.State(T=disch_T, s=suc.s(), fluid=suc.fluid, phase=suc.phase)
     head_calc_func = globals()[f"head_pol_{polytropic_method}"]
 
     def update_state(x):
